@@ -74,6 +74,7 @@ interface IEPRecord {
 interface WeeklyTask {
   id: string;
   weekLabel: string;
+  weekStartDate: string; // YYYY-MM-DD (해당 주 월요일 기준)
   title: string;
   detail: string;
   assignee: string; // 예: "전체 선생님" 또는 특정 선생님 성함
@@ -186,18 +187,6 @@ const INITIAL_TIMETABLE: TimetableSlot[] = [
   },
 ];
 
-const INITIAL_WEEKLY_TASKS: WeeklyTask[] = [
-  {
-    id: "wt-1",
-    weekLabel: "11월 4주차",
-    title: "주간 IEP 상담 일지 및 목표 진전도 점검",
-    detail: "담당 학생별 수업 활동 내용과 목표 달성 진전도를 금요일 수업 종료 전까지 업데이트해 주세요.",
-    assignee: "전체 선생님",
-    createdAt: "2026-11-24",
-    checkedByTeacher: false,
-  },
-];
-
 // --- 생년월일 기준 만 나이 자동 계산 ---
 function calculateAge(birthDateStr: string): number | null {
   if (!birthDateStr) return null;
@@ -242,6 +231,49 @@ function getExactDateFromMondayKey(mondayKey: string, day: DayOfWeek): string {
   const offset = DAYS.indexOf(day);
   base.setDate(base.getDate() + (offset >= 0 ? offset : 0));
   return formatDateKey(base);
+}
+
+// 실제 날짜 기준 "YYYY년 M월 N주차 (M/D~M/D)" 라벨 생성
+function getWeekLabelByMonday(monday: Date): string {
+  const year = monday.getFullYear();
+  const month = monday.getMonth() + 1;
+  const weekNumber = Math.ceil(monday.getDate() / 7);
+  const startStr = `${month}/${monday.getDate()}`;
+  const satDate = new Date(monday);
+  satDate.setDate(monday.getDate() + 5);
+  const endStr = `${satDate.getMonth() + 1}/${satDate.getDate()}`;
+  return `${year}년 ${month}월 ${weekNumber}주차 (${startStr}~${endStr})`;
+}
+
+// 기준 주간 앞뒤로 연속 주차 옵션 목록 생성
+function buildWeekOptions(baseMonday: Date, prevWeeks = 2, nextWeeks = 8) {
+  const options: { value: string; label: string; mondayKey: string }[] = [];
+  for (let offset = -prevWeeks; offset <= nextWeeks; offset++) {
+    const mon = new Date(baseMonday);
+    mon.setDate(baseMonday.getDate() + offset * 7);
+    const label = getWeekLabelByMonday(mon);
+    options.push({
+      value: label,
+      label,
+      mondayKey: formatDateKey(mon),
+    });
+  }
+  return options;
+}
+
+function createDefaultWeeklyTasks(baseMonday: Date): WeeklyTask[] {
+  return [
+    {
+      id: "wt-default-1",
+      weekLabel: getWeekLabelByMonday(baseMonday),
+      weekStartDate: formatDateKey(baseMonday),
+      title: "주간 IEP 상담 일지 및 목표 진전도 점검",
+      detail: "담당 학생별 수업 활동 내용과 목표 달성 진전도를 금요일 수업 종료 전까지 업데이트해 주세요.",
+      assignee: "전체 선생님",
+      createdAt: formatDateKey(new Date()),
+      checkedByTeacher: false,
+    },
+  ];
 }
 
 // --- 출결 및 목표 달성도 배지 스타일 헬퍼 ---
@@ -290,7 +322,7 @@ function createDefaultIEPRecords(): Record<string, IEPRecord> {
       adminChecked: true,
       adminFeedback:
         "시각적 단서 활용이 매우 효과적이네요. 다음 주 높이 상향 시 안전 매트 배치도 함께 확인 부탁드립니다.",
-      adminCheckedAt: "2026-11-17",
+      adminCheckedAt: formatDateKey(lastMon),
     },
     [`${thisMonKey}_slot-1_st-1`]: {
       sessionGoal: "높이 10cm 평균대 중간 지점에서 정지 후 5초간 균형 유지하기",
@@ -329,7 +361,7 @@ export default function Home() {
   const [timetable, setTimetable] = useState<TimetableSlot[]>(INITIAL_TIMETABLE);
   const [iepRecords, setIepRecords] = useState<Record<string, IEPRecord>>({});
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, AttendanceStatus>>({});
-  const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTask[]>(INITIAL_WEEKLY_TASKS);
+  const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTask[]>([]);
 
   // 2. 로그인 및 페이지 전환 상태
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
@@ -374,8 +406,10 @@ export default function Home() {
   const [adminFeedbackDrafts, setAdminFeedbackDrafts] = useState<Record<string, string>>({});
   const [reviewSaveMsg, setReviewSaveMsg] = useState<string>("");
 
-  // 주간 업무 지시/조회 상태
-  const [taskWeekInput, setTaskWeekInput] = useState<string>("11월 4주차");
+  // 주간 업무 지시/조회 상태 (실제 날짜 기준 주차 선택)
+  const [taskWeekInput, setTaskWeekInput] = useState<string>(() =>
+    getWeekLabelByMonday(getMonday(new Date(2026, 10, 24)))
+  );
   const [taskTitleInput, setTaskTitleInput] = useState<string>("");
   const [taskDetailInput, setTaskDetailInput] = useState<string>("");
   const [taskAssigneeInput, setTaskAssigneeInput] = useState<string>("전체 선생님");
@@ -433,6 +467,7 @@ export default function Home() {
       setCurrentMonday(todayMon);
       setHistoryMonday(todayMon);
       setReviewMonday(todayMon);
+      setTaskWeekInput(getWeekLabelByMonday(todayMon));
 
       const savedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
       const savedStudents = localStorage.getItem(STORAGE_KEYS.STUDENTS);
@@ -470,7 +505,7 @@ export default function Home() {
       if (savedWeeklyTasks) {
         setWeeklyTasks(JSON.parse(savedWeeklyTasks));
       } else {
-        setWeeklyTasks(INITIAL_WEEKLY_TASKS);
+        setWeeklyTasks(createDefaultWeeklyTasks(todayMon));
       }
 
       const savedSessionUser = sessionStorage.getItem(STORAGE_KEYS.SESSION_USER);
@@ -619,6 +654,8 @@ export default function Home() {
   const activeTeacher = teachersOnly.find((t) => t.id === activeTeacherId) || teachersOnly[0];
   const visibleTimetable = timetable.filter((slot) => slot.teacherId === activeTeacher?.id);
 
+  const weeklyTaskOptions = buildWeekOptions(currentMonday, 2, 8);
+
   const totalUncheckedIepCount = Object.values(iepRecords).filter((rec) => {
     const hasContent = Boolean(
       rec.sessionGoal.trim() ||
@@ -697,9 +734,14 @@ export default function Home() {
     const trimmedTitle = taskTitleInput.trim();
     if (!trimmedTitle) return;
 
+    const selectedWeekObj = weeklyTaskOptions.find((opt) => opt.value === taskWeekInput);
+    const chosenLabel = taskWeekInput || getWeekLabelByMonday(currentMonday);
+    const chosenMondayKey = selectedWeekObj?.mondayKey || formatDateKey(currentMonday);
+
     const newTask: WeeklyTask = {
       id: `wt-${Date.now()}`,
-      weekLabel: taskWeekInput.trim() || "이번 주",
+      weekLabel: chosenLabel,
+      weekStartDate: chosenMondayKey,
       title: trimmedTitle,
       detail: taskDetailInput.trim() || "상세 지시사항 없음",
       assignee: taskAssigneeInput.trim() || "전체 선생님",
@@ -710,7 +752,7 @@ export default function Home() {
     setWeeklyTasks((prev) => [newTask, ...prev]);
     setTaskTitleInput("");
     setTaskDetailInput("");
-    setWeeklyTaskMessage("✅ 새 주간 업무 지시가 등록되어 선생님 화면에 반영되었습니다.");
+    setWeeklyTaskMessage(`✅ '${chosenLabel}' 주간 업무 지시가 등록되어 누적 보관됩니다.`);
     setTimeout(() => setWeeklyTaskMessage(""), 3500);
   };
 
@@ -733,11 +775,14 @@ export default function Home() {
     const next = new Date(currentMonday);
     next.setDate(currentMonday.getDate() + weeks * 7);
     setCurrentMonday(next);
+    setTaskWeekInput(getWeekLabelByMonday(next));
     setSaveMessage("");
   };
 
   const resetToThisWeek = () => {
-    setCurrentMonday(getMonday(new Date()));
+    const todayMon = getMonday(new Date());
+    setCurrentMonday(todayMon);
+    setTaskWeekInput(getWeekLabelByMonday(todayMon));
     setSaveMessage("");
   };
 
@@ -1180,6 +1225,7 @@ export default function Home() {
           <button
             onClick={() => {
               setWeeklyTaskMessage("");
+              setTaskWeekInput(getWeekLabelByMonday(currentMonday));
               setActivePage("weeklyTasks");
             }}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5 ${
@@ -1312,7 +1358,7 @@ export default function Home() {
   );
 
   // ============================================================================
-  // [공통 페이지] 주간 업무 지시(관리자) & 조회/확인 체크(선생님)
+  // [공통 페이지] 주간 업무 지시(관리자) & 조회/확인 체크(선생님) - 누적 저장형
   // ============================================================================
   if (activePage === "weeklyTasks") {
     const visibleTasksForTeacher = weeklyTasks.filter(
@@ -1321,6 +1367,10 @@ export default function Home() {
         task.assignee === "전체 교사" ||
         task.assignee.includes(currentUser.name.replace(" 선생님", "")) ||
         task.assignee === currentUser.name
+    );
+
+    const hasSelectedWeekInOptions = weeklyTaskOptions.some(
+      (opt) => opt.value === taskWeekInput
     );
 
     return (
@@ -1332,13 +1382,13 @@ export default function Home() {
             <div>
               <h2 className="text-xl font-bold text-slate-800">
                 {currentUser.role === "admin"
-                  ? "📌 관리자 주간 업무 지시 및 현황"
+                  ? "📌 관리자 주간 업무 지시 및 누적 현황"
                   : `📌 ${currentUser.name} 주간 업무 안내`}
               </h2>
               <p className="text-xs text-slate-500 mt-1">
                 {currentUser.role === "admin"
-                  ? "주간 업무를 입력해 등록하면 선생님 화면의 주간 업무 목록에 바로 표시됩니다."
-                  : "관리자가 지시한 주간 업무를 확인하고 완료 시 [확인 완료]를 체크해 주세요."}
+                  ? "실제 날짜 기준 주차를 선택해 등록하면 주차별로 계속 누적 보관되고 선생님 화면에 반영됩니다."
+                  : "관리자가 주차별로 등록한 주간 업무를 확인하고 완료 시 [확인 완료]를 체크해 주세요."}
               </p>
             </div>
             {weeklyTaskMessage && (
@@ -1358,15 +1408,22 @@ export default function Home() {
                 <form onSubmit={handleAddWeeklyTask} className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                      주차 구분
+                      주차 선택 (실제 날짜 기준)
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={taskWeekInput}
                       onChange={(e) => setTaskWeekInput(e.target.value)}
-                      placeholder="예: 11월 4주차"
-                      className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-800"
-                    />
+                      className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {!hasSelectedWeekInOptions && taskWeekInput && (
+                        <option value={taskWeekInput}>{taskWeekInput}</option>
+                      )}
+                      {weeklyTaskOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
@@ -1425,7 +1482,7 @@ export default function Home() {
 
               <section className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
                 <h3 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100">
-                  📋 등록된 주간 업무 목록 ({weeklyTasks.length}건)
+                  📋 누적 등록된 주간 업무 목록 ({weeklyTasks.length}건)
                 </h3>
 
                 {weeklyTasks.length === 0 ? (
@@ -1482,7 +1539,7 @@ export default function Home() {
             <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="text-base font-bold text-slate-800">
-                  📋 전달된 주간 업무 ({visibleTasksForTeacher.length}건)
+                  📋 누적 주간 업무 ({visibleTasksForTeacher.length}건)
                 </h3>
                 <span className="text-xs text-slate-400">자동 저장됨</span>
               </div>
