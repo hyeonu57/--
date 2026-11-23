@@ -74,7 +74,7 @@ interface IEPRecord {
 const INITIAL_USERS: UserAccount[] = [
   { id: "admin-1", loginId: "admin", password: "1234", name: "총괄 관리자", role: "admin" },
   { id: "t-1", loginId: "teacher1", password: "1234", name: "정현우 선생님", role: "teacher" },
-  { id: "t-2", loginId: "teacher2", password: "1234", name: "김지훈 선생님", role: "teacher" },
+  { id: "t-2", loginId: "teacher2", password: "1234", name: "김휘원 선생님", role: "teacher" },
 ];
 
 const INITIAL_CATEGORIES: ClassCategory[] = [
