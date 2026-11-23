@@ -80,6 +80,7 @@ interface WeeklyTask {
   assignee: string; // 예: "전체 선생님" 또는 특정 선생님 성함
   createdAt: string;
   checkedByTeacher: boolean;
+  checkedByTeachers?: Record<string, boolean>; // 선생님 계정 ID별 확인 여부
 }
 
 // --- 초기 계정 및 테스트 데이터 ---
@@ -261,6 +262,47 @@ function buildWeekOptions(baseMonday: Date, prevWeeks = 2, nextWeeks = 8) {
   return options;
 }
 
+// --- 주간 업무 대상 선생님 및 확인 상태 헬퍼 ---
+function getTargetTeachersForTask(
+  task: Pick<WeeklyTask, "assignee">,
+  teachers: UserAccount[]
+): UserAccount[] {
+  if (task.assignee === "전체 선생님" || task.assignee === "전체 교사") {
+    return teachers;
+  }
+  const matched = teachers.filter(
+    (t) =>
+      t.name === task.assignee ||
+      task.assignee.includes(t.name.replace(" 선생님", ""))
+  );
+  return matched.length > 0 ? matched : teachers;
+}
+
+function isTaskCheckedByTeacher(task: WeeklyTask, teacherId: string): boolean {
+  if (task.checkedByTeachers && Object.prototype.hasOwnProperty.call(task.checkedByTeachers, teacherId)) {
+    return Boolean(task.checkedByTeachers[teacherId]);
+  }
+  return Boolean(task.checkedByTeacher);
+}
+
+function normalizeWeeklyTask(raw: WeeklyTask, teachers: UserAccount[]): WeeklyTask {
+  const map: Record<string, boolean> = { ...(raw.checkedByTeachers || {}) };
+  if (raw.checkedByTeacher && Object.keys(map).length === 0) {
+    getTargetTeachersForTask(raw, teachers).forEach((t) => {
+      map[t.id] = true;
+    });
+  }
+  const targets = getTargetTeachersForTask(raw, teachers);
+  const allChecked =
+    targets.length > 0 && targets.every((t) => Boolean(map[t.id]));
+
+  return {
+    ...raw,
+    checkedByTeachers: map,
+    checkedByTeacher: allChecked,
+  };
+}
+
 function createDefaultWeeklyTasks(baseMonday: Date): WeeklyTask[] {
   return [
     {
@@ -273,6 +315,7 @@ function createDefaultWeeklyTasks(baseMonday: Date): WeeklyTask[] {
       assignee: "전체 선생님",
       createdAt: formatDateKey(new Date()),
       checkedByTeacher: false,
+      checkedByTeachers: {},
     },
   ];
 }
@@ -480,6 +523,7 @@ export default function Home() {
       const savedWeeklyTasks = localStorage.getItem(STORAGE_KEYS.WEEKLY_TASKS);
 
       const parsedUsers: UserAccount[] = savedUsers ? JSON.parse(savedUsers) : INITIAL_USERS;
+      const parsedTeachers = parsedUsers.filter((u) => u.role === "teacher");
       const parsedTimetable: TimetableSlot[] = savedTimetable
         ? JSON.parse(savedTimetable)
         : INITIAL_TIMETABLE;
@@ -505,7 +549,8 @@ export default function Home() {
       }
 
       if (savedWeeklyTasks) {
-        setWeeklyTasks(JSON.parse(savedWeeklyTasks));
+        const parsedTasks: WeeklyTask[] = JSON.parse(savedWeeklyTasks);
+        setWeeklyTasks(parsedTasks.map((t) => normalizeWeeklyTask(t, parsedTeachers)));
       } else {
         setWeeklyTasks(createDefaultWeeklyTasks(todayMon));
       }
@@ -517,10 +562,9 @@ export default function Home() {
         const validUser = parsedUsers.find((u) => u.id === sessionUser.id);
         if (validUser) {
           setCurrentUser(validUser);
-          const teachers = parsedUsers.filter((u) => u.role === "teacher");
-          if (validUser.role === "admin" && teachers.length > 0) {
-            setAdminTargetTeacherId(teachers[0].id);
-            setReviewTeacherId(teachers[0].id);
+          if (validUser.role === "admin" && parsedTeachers.length > 0) {
+            setAdminTargetTeacherId(parsedTeachers[0].id);
+            setReviewTeacherId(parsedTeachers[0].id);
           } else if (validUser.role === "teacher") {
             const mySlots = parsedTimetable.filter((s) => s.teacherId === validUser.id);
             const assignedIds = new Set<string>();
@@ -631,13 +675,21 @@ export default function Home() {
           alert("올바른 IEP 백업 JSON 파일이 아닙니다.");
           return;
         }
-        setUsers(parsed.users);
+        const importedUsers: UserAccount[] = parsed.users;
+        const importedTeachers = importedUsers.filter((u) => u.role === "teacher");
+        setUsers(importedUsers);
         setStudents(parsed.students);
         if (parsed.categories) setCategories(parsed.categories);
         setTimetable(parsed.timetable);
         setIepRecords(parsed.iepRecords);
         if (parsed.attendanceRecords) setAttendanceRecords(parsed.attendanceRecords);
-        if (parsed.weeklyTasks) setWeeklyTasks(parsed.weeklyTasks);
+        if (parsed.weeklyTasks) {
+          setWeeklyTasks(
+            (parsed.weeklyTasks as WeeklyTask[]).map((t) =>
+              normalizeWeeklyTask(t, importedTeachers)
+            )
+          );
+        }
 
         alert("✅ 백업 파일에서 모든 데이터가 성공적으로 복원되었습니다!");
       } catch {
@@ -668,7 +720,14 @@ export default function Home() {
     return hasContent && !rec.adminChecked;
   }).length;
 
-  const uncheckedWeeklyTaskCount = weeklyTasks.filter((task) => !task.checkedByTeacher).length;
+  const uncheckedWeeklyTaskCount =
+    currentUser?.role === "teacher"
+      ? weeklyTasks.filter((task) => {
+          const targets = getTargetTeachersForTask(task, teachersOnly);
+          const isMine = targets.some((t) => t.id === currentUser.id);
+          return isMine && !isTaskCheckedByTeacher(task, currentUser.id);
+        }).length
+      : 0;
 
   const getAssignedStudentsForTeacher = (teacherId: string): Student[] => {
     const teacherSlots = timetable.filter((slot) => slot.teacherId === teacherId);
@@ -739,6 +798,12 @@ export default function Home() {
     const selectedWeekObj = weeklyTaskOptions.find((opt) => opt.value === taskWeekInput);
     const chosenLabel = taskWeekInput || getWeekLabelByMonday(currentMonday);
     const chosenMondayKey = selectedWeekObj?.mondayKey || formatDateKey(currentMonday);
+    const chosenAssignee = taskAssigneeInput.trim() || "전체 선생님";
+
+    const initialTeacherMap: Record<string, boolean> = {};
+    getTargetTeachersForTask({ assignee: chosenAssignee }, teachersOnly).forEach((t) => {
+      initialTeacherMap[t.id] = false;
+    });
 
     const newTask: WeeklyTask = {
       id: `wt-${Date.now()}`,
@@ -746,9 +811,10 @@ export default function Home() {
       weekStartDate: chosenMondayKey,
       title: trimmedTitle,
       detail: taskDetailInput.trim() || "상세 지시사항 없음",
-      assignee: taskAssigneeInput.trim() || "전체 선생님",
+      assignee: chosenAssignee,
       createdAt: formatDateKey(new Date()),
       checkedByTeacher: false,
+      checkedByTeachers: initialTeacherMap,
     };
 
     setWeeklyTasks((prev) => [newTask, ...prev]);
@@ -758,11 +824,28 @@ export default function Home() {
     setTimeout(() => setWeeklyTaskMessage(""), 3500);
   };
 
-  const handleToggleWeeklyTaskChecked = (taskId: string) => {
+  const handleToggleWeeklyTaskChecked = (taskId: string, teacherId?: string) => {
+    const targetTeacherId = teacherId || currentUser?.id;
+    if (!targetTeacherId) return;
+
     setWeeklyTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId ? { ...task, checkedByTeacher: !task.checkedByTeacher } : task
-      )
+      prev.map((task) => {
+        if (task.id !== taskId) return task;
+        const currentVal = isTaskCheckedByTeacher(task, targetTeacherId);
+        const nextMap: Record<string, boolean> = {
+          ...(task.checkedByTeachers || {}),
+          [targetTeacherId]: !currentVal,
+        };
+        const targets = getTargetTeachersForTask(task, teachersOnly);
+        const allChecked =
+          targets.length > 0 && targets.every((t) => Boolean(nextMap[t.id]));
+
+        return {
+          ...task,
+          checkedByTeachers: nextMap,
+          checkedByTeacher: allChecked,
+        };
+      })
     );
   };
 
@@ -1364,16 +1447,13 @@ export default function Home() {
   );
 
   // ============================================================================
-  // [공통 페이지] 주간 업무 지시(관리자 확장 작성칸) & 조회/팝업 확인(선생님)
+  // [공통 페이지] 주간 업무 지시(관리자 확장 작성칸·선생님별 확인 현황) & 조회/팝업 확인(선생님)
   // ============================================================================
   if (activePage === "weeklyTasks") {
-    const visibleTasksForTeacher = weeklyTasks.filter(
-      (task) =>
-        task.assignee === "전체 선생님" ||
-        task.assignee === "전체 교사" ||
-        task.assignee.includes(currentUser.name.replace(" 선생님", "")) ||
-        task.assignee === currentUser.name
-    );
+    const visibleTasksForTeacher = weeklyTasks.filter((task) => {
+      const targets = getTargetTeachersForTask(task, teachersOnly);
+      return targets.some((t) => t.id === currentUser.id);
+    });
 
     const selectedPopupTask = popupTaskId
       ? visibleTasksForTeacher.find((t) => t.id === popupTaskId) || null
@@ -1392,12 +1472,12 @@ export default function Home() {
             <div>
               <h2 className="text-xl font-bold text-slate-800">
                 {currentUser.role === "admin"
-                  ? "📌 관리자 주간 업무 지시 및 누적 현황"
+                  ? "📌 관리자 주간 업무 지시 및 선생님별 확인 현황"
                   : `📌 ${currentUser.name} 주간 업무 안내`}
               </h2>
               <p className="text-xs text-slate-500 mt-1">
                 {currentUser.role === "admin"
-                  ? "확장된 작성 칸에 상세 지시사항을 넉넉하게 입력할 수 있으며, 등록된 내역은 주차별로 누적 보관됩니다."
+                  ? "확장된 작성 칸에 상세 지시사항을 입력하고, 오른쪽 목록에서 각 선생님의 확인 완료 여부를 한눈에 확인하세요."
                   : "목록에서는 핵심 요약만 보시고, 업무 항목을 클릭하면 팝업 창이 열려 상세 내용을 편하게 읽을 수 있습니다."}
               </p>
             </div>
@@ -1410,7 +1490,7 @@ export default function Home() {
 
           {currentUser.role === "admin" ? (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              <section className="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm h-fit">
+              <section className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm h-fit">
                 <h3 className="text-base font-bold text-slate-800 mb-4 pb-3 border-b border-slate-100">
                   ➕ 주간 업무 상세 작성
                 </h3>
@@ -1497,57 +1577,96 @@ export default function Home() {
                 </form>
               </section>
 
-              <section className="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-                <h3 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100">
-                  📋 누적 등록된 주간 업무 목록 ({weeklyTasks.length}건)
-                </h3>
+              <section className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                  <h3 className="text-base font-bold text-slate-800">
+                    📋 누적 등록된 주간 업무 및 선생님별 확인 현황 ({weeklyTasks.length}건)
+                  </h3>
+                  <span className="text-[11px] text-slate-400">
+                    등록된 선생님 {teachersOnly.length}명 기준
+                  </span>
+                </div>
 
                 {weeklyTasks.length === 0 ? (
                   <div className="py-12 text-center text-sm text-slate-400">
                     등록된 주간 업무가 없습니다.
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {weeklyTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2.5"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex flex-wrap items-center gap-2 text-xs">
-                            <span className="px-2.5 py-0.5 rounded-md bg-slate-800 text-white font-bold">
-                              {task.weekLabel}
-                            </span>
-                            <span className="px-2.5 py-0.5 rounded-md bg-blue-100 text-blue-800 font-bold">
-                              대상: {task.assignee}
-                            </span>
-                            <span className="text-slate-400">등록일: {task.createdAt}</span>
-                            <span
-                              className={`px-2 py-0.5 rounded-md font-bold ${
-                                task.checkedByTeacher
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : "bg-amber-100 text-amber-800"
-                              }`}
+                  <div className="space-y-3.5">
+                    {weeklyTasks.map((task) => {
+                      const targetTeachers = getTargetTeachersForTask(task, teachersOnly);
+                      const checkedCount = targetTeachers.filter((t) =>
+                        isTaskCheckedByTeacher(task, t.id)
+                      ).length;
+
+                      return (
+                        <div
+                          key={task.id}
+                          className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <span className="px-2.5 py-0.5 rounded-md bg-slate-800 text-white font-bold">
+                                {task.weekLabel}
+                              </span>
+                              <span className="px-2.5 py-0.5 rounded-md bg-blue-100 text-blue-800 font-bold">
+                                대상: {task.assignee}
+                              </span>
+                              <span className="text-slate-400">등록일: {task.createdAt}</span>
+                              <span
+                                className={`px-2.5 py-0.5 rounded-md font-extrabold ${
+                                  targetTeachers.length > 0 &&
+                                  checkedCount === targetTeachers.length
+                                    ? "bg-emerald-600 text-white"
+                                    : "bg-amber-100 text-amber-800"
+                                }`}
+                              >
+                                확인 {checkedCount}/{targetTeachers.length}명
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteWeeklyTask(task.id)}
+                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg transition"
                             >
-                              {task.checkedByTeacher ? "✅ 확인 완료" : "⏳ 확인 대기"}
-                            </span>
+                              삭제
+                            </button>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteWeeklyTask(task.id)}
-                            className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg transition"
-                          >
-                            삭제
-                          </button>
-                        </div>
+                          <p className="text-sm font-bold text-slate-800">{task.title}</p>
 
-                        <p className="text-sm font-bold text-slate-800">{task.title}</p>
-                        <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed bg-white p-3 rounded-lg border border-slate-200/80">
-                          {task.detail}
-                        </p>
-                      </div>
-                    ))}
+                          {/* 선생님별 확인 완료 여부 한눈에 보기 */}
+                          <div className="bg-white rounded-xl border border-slate-200/90 p-3 space-y-2">
+                            <span className="text-[11px] font-bold text-slate-500 block">
+                              선생님별 확인 상태
+                            </span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {targetTeachers.map((teacher) => {
+                                const done = isTaskCheckedByTeacher(task, teacher.id);
+                                return (
+                                  <span
+                                    key={teacher.id}
+                                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border ${
+                                      done
+                                        ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                        : "bg-amber-50 text-amber-800 border-amber-200"
+                                    }`}
+                                  >
+                                    <span>{teacher.name}</span>
+                                    <span>{done ? "✅ 확인 완료" : "⏳ 미확인"}</span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed bg-white p-3 rounded-lg border border-slate-200/80">
+                            {task.detail}
+                          </p>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </section>
@@ -1569,73 +1688,79 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {visibleTasksForTeacher.map((task) => (
-                    <div
-                      key={task.id}
-                      onClick={() => setPopupTaskId(task.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setPopupTaskId(task.id);
-                        }
-                      }}
-                      className={`p-4 rounded-xl border transition cursor-pointer flex flex-wrap items-center justify-between gap-3 ${
-                        task.checkedByTeacher
-                          ? "bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50/80"
-                          : "bg-slate-50/80 border-slate-200 hover:bg-blue-50/60 hover:border-blue-300"
-                      }`}
-                    >
-                      <div className="space-y-1.5 min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className="px-2.5 py-0.5 rounded-md bg-blue-600 text-white font-bold">
-                            {task.weekLabel}
-                          </span>
-                          <span className="px-2.5 py-0.5 rounded-md bg-slate-200 text-slate-700 font-bold">
-                            대상: {task.assignee}
-                          </span>
-                          <span className="text-slate-400">{task.createdAt}</span>
-                          <span
-                            className={`px-2 py-0.5 rounded-md font-bold ${
-                              task.checkedByTeacher
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-amber-100 text-amber-800"
-                            }`}
-                          >
-                            {task.checkedByTeacher ? "✅ 확인 완료" : "⏳ 미확인"}
-                          </span>
+                  {visibleTasksForTeacher.map((task) => {
+                    const isCheckedMine = isTaskCheckedByTeacher(task, currentUser.id);
+
+                    return (
+                      <div
+                        key={task.id}
+                        onClick={() => setPopupTaskId(task.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setPopupTaskId(task.id);
+                          }
+                        }}
+                        className={`p-4 rounded-xl border transition cursor-pointer flex flex-wrap items-center justify-between gap-3 ${
+                          isCheckedMine
+                            ? "bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50/80"
+                            : "bg-slate-50/80 border-slate-200 hover:bg-blue-50/60 hover:border-blue-300"
+                        }`}
+                      >
+                        <div className="space-y-1.5 min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="px-2.5 py-0.5 rounded-md bg-blue-600 text-white font-bold">
+                              {task.weekLabel}
+                            </span>
+                            <span className="px-2.5 py-0.5 rounded-md bg-slate-200 text-slate-700 font-bold">
+                              대상: {task.assignee}
+                            </span>
+                            <span className="text-slate-400">{task.createdAt}</span>
+                            <span
+                              className={`px-2 py-0.5 rounded-md font-bold ${
+                                isCheckedMine
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {isCheckedMine ? "✅ 확인 완료" : "⏳ 미확인"}
+                            </span>
+                          </div>
+
+                          <h4 className="text-base font-bold text-slate-800 truncate">
+                            {task.title}
+                          </h4>
                         </div>
 
-                        <h4 className="text-base font-bold text-slate-800 truncate">
-                          {task.title}
-                        </h4>
-                      </div>
-
-                      <div
-                        className="flex items-center gap-2 shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setPopupTaskId(task.id)}
-                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition"
+                        <div
+                          className="flex items-center gap-2 shrink-0"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          팝업 열기
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => setPopupTaskId(task.id)}
+                            className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition"
+                          >
+                            팝업 열기
+                          </button>
 
-                        <label className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-800 cursor-pointer select-none bg-white px-3 py-1.5 rounded-lg border border-slate-300">
-                          <input
-                            type="checkbox"
-                            checked={task.checkedByTeacher}
-                            onChange={() => handleToggleWeeklyTaskChecked(task.id)}
-                            className="w-4 h-4 accent-emerald-600"
-                          />
-                          <span>확인 완료</span>
-                        </label>
+                          <label className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-800 cursor-pointer select-none bg-white px-3 py-1.5 rounded-lg border border-slate-300">
+                            <input
+                              type="checkbox"
+                              checked={isCheckedMine}
+                              onChange={() =>
+                                handleToggleWeeklyTaskChecked(task.id, currentUser.id)
+                              }
+                              className="w-4 h-4 accent-emerald-600"
+                            />
+                            <span>확인 완료</span>
+                          </label>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -1686,8 +1811,10 @@ export default function Home() {
                 <label className="inline-flex items-center gap-2 text-xs font-extrabold text-slate-800 cursor-pointer select-none bg-emerald-50 px-3.5 py-2 rounded-xl border border-emerald-200">
                   <input
                     type="checkbox"
-                    checked={selectedPopupTask.checkedByTeacher}
-                    onChange={() => handleToggleWeeklyTaskChecked(selectedPopupTask.id)}
+                    checked={isTaskCheckedByTeacher(selectedPopupTask, currentUser.id)}
+                    onChange={() =>
+                      handleToggleWeeklyTaskChecked(selectedPopupTask.id, currentUser.id)
+                    }
                     className="w-4 h-4 accent-emerald-600"
                   />
                   <span>이 주간 업무 내용을 확인했습니다 (확인 완료)</span>
