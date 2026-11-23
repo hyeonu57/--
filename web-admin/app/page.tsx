@@ -268,7 +268,8 @@ function createDefaultWeeklyTasks(baseMonday: Date): WeeklyTask[] {
       weekLabel: getWeekLabelByMonday(baseMonday),
       weekStartDate: formatDateKey(baseMonday),
       title: "주간 IEP 상담 일지 및 목표 진전도 점검",
-      detail: "담당 학생별 수업 활동 내용과 목표 달성 진전도를 금요일 수업 종료 전까지 업데이트해 주세요.",
+      detail:
+        "1. 담당 학생별 금주 수업 활동 내용 및 아이의 반응을 기록해 주세요.\n2. 목표 달성 진전도(달성 완료 / 진행 중 / 지원 필요)를 선택해 주세요.\n3. 금요일 수업 종료 전까지 작성을 완료해 주시기 바랍니다.",
       assignee: "전체 선생님",
       createdAt: formatDateKey(new Date()),
       checkedByTeacher: false,
@@ -406,7 +407,7 @@ export default function Home() {
   const [adminFeedbackDrafts, setAdminFeedbackDrafts] = useState<Record<string, string>>({});
   const [reviewSaveMsg, setReviewSaveMsg] = useState<string>("");
 
-  // 주간 업무 지시/조회 상태 (실제 날짜 기준 주차 선택)
+  // 주간 업무 지시/조회 및 선생님 팝업 상태
   const [taskWeekInput, setTaskWeekInput] = useState<string>(() =>
     getWeekLabelByMonday(getMonday(new Date(2026, 10, 24)))
   );
@@ -414,6 +415,7 @@ export default function Home() {
   const [taskDetailInput, setTaskDetailInput] = useState<string>("");
   const [taskAssigneeInput, setTaskAssigneeInput] = useState<string>("전체 선생님");
   const [weeklyTaskMessage, setWeeklyTaskMessage] = useState<string>("");
+  const [popupTaskId, setPopupTaskId] = useState<string | null>(null);
 
   // 수업 상세 페이지 내 [기초·상태 및 장기/단기 목표] 편집 토글 상태
   const [isEditingGoalsAndStatus, setIsEditingGoalsAndStatus] = useState<boolean>(false);
@@ -766,6 +768,7 @@ export default function Home() {
 
   const handleDeleteWeeklyTask = (taskId: string) => {
     setWeeklyTasks((prev) => prev.filter((task) => task.id !== taskId));
+    if (popupTaskId === taskId) setPopupTaskId(null);
     setWeeklyTaskMessage("🗑️ 주간 업무가 삭제되었습니다.");
     setTimeout(() => setWeeklyTaskMessage(""), 3000);
   };
@@ -801,6 +804,7 @@ export default function Home() {
     setLoginError("");
     setCurrentUser(matchedUser);
     setActivePage("timetable");
+    setPopupTaskId(null);
     setLoginIdInput("");
     setLoginPwInput("");
 
@@ -821,6 +825,7 @@ export default function Home() {
     setActivePage("timetable");
     setSelectedSlotId(null);
     setSelectedStudentId(null);
+    setPopupTaskId(null);
     sessionStorage.removeItem(STORAGE_KEYS.SESSION_USER);
     sessionStorage.removeItem(STORAGE_KEYS.SESSION_PAGE);
   };
@@ -1225,6 +1230,7 @@ export default function Home() {
           <button
             onClick={() => {
               setWeeklyTaskMessage("");
+              setPopupTaskId(null);
               setTaskWeekInput(getWeekLabelByMonday(currentMonday));
               setActivePage("weeklyTasks");
             }}
@@ -1358,7 +1364,7 @@ export default function Home() {
   );
 
   // ============================================================================
-  // [공통 페이지] 주간 업무 지시(관리자) & 조회/확인 체크(선생님) - 누적 저장형
+  // [공통 페이지] 주간 업무 지시(관리자 확장 작성칸) & 조회/팝업 확인(선생님)
   // ============================================================================
   if (activePage === "weeklyTasks") {
     const visibleTasksForTeacher = weeklyTasks.filter(
@@ -1369,6 +1375,10 @@ export default function Home() {
         task.assignee === currentUser.name
     );
 
+    const selectedPopupTask = popupTaskId
+      ? visibleTasksForTeacher.find((t) => t.id === popupTaskId) || null
+      : null;
+
     const hasSelectedWeekInOptions = weeklyTaskOptions.some(
       (opt) => opt.value === taskWeekInput
     );
@@ -1377,7 +1387,7 @@ export default function Home() {
       <div className="min-h-screen bg-slate-50 flex flex-col">
         {renderHeader()}
 
-        <main className="flex-1 max-w-5xl w-full mx-auto p-6 space-y-6">
+        <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-bold text-slate-800">
@@ -1387,8 +1397,8 @@ export default function Home() {
               </h2>
               <p className="text-xs text-slate-500 mt-1">
                 {currentUser.role === "admin"
-                  ? "실제 날짜 기준 주차를 선택해 등록하면 주차별로 계속 누적 보관되고 선생님 화면에 반영됩니다."
-                  : "관리자가 주차별로 등록한 주간 업무를 확인하고 완료 시 [확인 완료]를 체크해 주세요."}
+                  ? "확장된 작성 칸에 상세 지시사항을 넉넉하게 입력할 수 있으며, 등록된 내역은 주차별로 누적 보관됩니다."
+                  : "목록에서는 핵심 요약만 보시고, 업무 항목을 클릭하면 팝업 창이 열려 상세 내용을 편하게 읽을 수 있습니다."}
               </p>
             </div>
             {weeklyTaskMessage && (
@@ -1400,48 +1410,50 @@ export default function Home() {
 
           {currentUser.role === "admin" ? (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              <section className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm h-fit">
+              <section className="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm h-fit">
                 <h3 className="text-base font-bold text-slate-800 mb-4 pb-3 border-b border-slate-100">
-                  ➕ 주간 업무 입력
+                  ➕ 주간 업무 상세 작성
                 </h3>
 
                 <form onSubmit={handleAddWeeklyTask} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      주차 선택 (실제 날짜 기준)
-                    </label>
-                    <select
-                      value={taskWeekInput}
-                      onChange={(e) => setTaskWeekInput(e.target.value)}
-                      className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {!hasSelectedWeekInOptions && taskWeekInput && (
-                        <option value={taskWeekInput}>{taskWeekInput}</option>
-                      )}
-                      {weeklyTaskOptions.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        주차 선택 (실제 날짜 기준)
+                      </label>
+                      <select
+                        value={taskWeekInput}
+                        onChange={(e) => setTaskWeekInput(e.target.value)}
+                        className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {!hasSelectedWeekInOptions && taskWeekInput && (
+                          <option value={taskWeekInput}>{taskWeekInput}</option>
+                        )}
+                        {weeklyTaskOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      대상 선생님
-                    </label>
-                    <select
-                      value={taskAssigneeInput}
-                      onChange={(e) => setTaskAssigneeInput(e.target.value)}
-                      className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-800 bg-white"
-                    >
-                      <option value="전체 선생님">전체 선생님</option>
-                      {teachersOnly.map((t) => (
-                        <option key={t.id} value={t.name}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        대상 선생님
+                      </label>
+                      <select
+                        value={taskAssigneeInput}
+                        onChange={(e) => setTaskAssigneeInput(e.target.value)}
+                        className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-800 bg-white"
+                      >
+                        <option value="전체 선생님">전체 선생님</option>
+                        {teachersOnly.map((t) => (
+                          <option key={t.id} value={t.name}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div>
@@ -1452,35 +1464,40 @@ export default function Home() {
                       type="text"
                       value={taskTitleInput}
                       onChange={(e) => setTaskTitleInput(e.target.value)}
-                      placeholder="예: 주간 IEP 기록 및 수업 교구 점검"
-                      className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-800"
+                      placeholder="예: 11월 4주차 IEP 일지 작성 및 교구 점검 안내"
+                      className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      상세 지시사항
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-700">
+                        상세 지시사항 (확장 입력 칸)
+                      </label>
+                      <span className="text-[11px] text-slate-400">
+                        {taskDetailInput.length}자 입력됨 · 우측 하단 드래그로 높이 조절 가능
+                      </span>
+                    </div>
                     <textarea
-                      rows={4}
+                      rows={8}
                       value={taskDetailInput}
                       onChange={(e) => setTaskDetailInput(e.target.value)}
-                      placeholder="선생님들께 전달할 세부 지시 내용이나 마감 일정을 입력하세요."
-                      className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-800"
+                      placeholder={`선생님들께 전달할 세부 지시 내용이나 마감 일정을 여유롭게 입력하세요.\n\n예시)\n1. 주간 IEP 일지 작성 마감: 금요일 17시\n2. 수중/PT 교구 소독 및 정리 상태 점검\n3. 특이사항 발생 시 즉시 관리자 공유`}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm text-slate-800 leading-relaxed resize-y min-h-[180px] focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition shadow-sm"
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition shadow-sm"
                   >
                     주간 업무 지시 등록
                   </button>
                 </form>
               </section>
 
-              <section className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <section className="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
                 <h3 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100">
                   📋 누적 등록된 주간 업무 목록 ({weeklyTasks.length}건)
                 </h3>
@@ -1494,7 +1511,7 @@ export default function Home() {
                     {weeklyTasks.map((task) => (
                       <div
                         key={task.id}
-                        className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2"
+                        className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2.5"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -1526,7 +1543,7 @@ export default function Home() {
                         </div>
 
                         <p className="text-sm font-bold text-slate-800">{task.title}</p>
-                        <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed">
+                        <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed bg-white p-3 rounded-lg border border-slate-200/80">
                           {task.detail}
                         </p>
                       </div>
@@ -1537,11 +1554,13 @@ export default function Home() {
             </div>
           ) : (
             <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                 <h3 className="text-base font-bold text-slate-800">
-                  📋 누적 주간 업무 ({visibleTasksForTeacher.length}건)
+                  📋 누적 주간 업무 목록 ({visibleTasksForTeacher.length}건)
                 </h3>
-                <span className="text-xs text-slate-400">자동 저장됨</span>
+                <span className="text-xs text-slate-500">
+                  항목을 클릭하면 상세 내용을 팝업으로 열람합니다.
+                </span>
               </div>
 
               {visibleTasksForTeacher.length === 0 ? (
@@ -1551,15 +1570,24 @@ export default function Home() {
               ) : (
                 <div className="space-y-3">
                   {visibleTasksForTeacher.map((task) => (
-                    <article
+                    <div
                       key={task.id}
-                      className={`p-4 rounded-xl border transition space-y-2 ${
+                      onClick={() => setPopupTaskId(task.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setPopupTaskId(task.id);
+                        }
+                      }}
+                      className={`p-4 rounded-xl border transition cursor-pointer flex flex-wrap items-center justify-between gap-3 ${
                         task.checkedByTeacher
-                          ? "bg-emerald-50/40 border-emerald-200"
-                          : "bg-slate-50/70 border-slate-200"
+                          ? "bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50/80"
+                          : "bg-slate-50/80 border-slate-200 hover:bg-blue-50/60 hover:border-blue-300"
                       }`}
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="space-y-1.5 min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           <span className="px-2.5 py-0.5 rounded-md bg-blue-600 text-white font-bold">
                             {task.weekLabel}
@@ -1568,9 +1596,35 @@ export default function Home() {
                             대상: {task.assignee}
                           </span>
                           <span className="text-slate-400">{task.createdAt}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-md font-bold ${
+                              task.checkedByTeacher
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {task.checkedByTeacher ? "✅ 확인 완료" : "⏳ 미확인"}
+                          </span>
                         </div>
 
-                        <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer select-none bg-white px-3 py-1.5 rounded-lg border border-slate-300">
+                        <h4 className="text-base font-bold text-slate-800 truncate">
+                          {task.title}
+                        </h4>
+                      </div>
+
+                      <div
+                        className="flex items-center gap-2 shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setPopupTaskId(task.id)}
+                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition"
+                        >
+                          팝업 열기
+                        </button>
+
+                        <label className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-800 cursor-pointer select-none bg-white px-3 py-1.5 rounded-lg border border-slate-300">
                           <input
                             type="checkbox"
                             checked={task.checkedByTeacher}
@@ -1580,18 +1634,76 @@ export default function Home() {
                           <span>확인 완료</span>
                         </label>
                       </div>
-
-                      <h4 className="text-base font-bold text-slate-800">{task.title}</h4>
-                      <p className="text-sm text-slate-600 whitespace-pre-line leading-relaxed">
-                        {task.detail}
-                      </p>
-                    </article>
+                    </div>
                   ))}
                 </div>
               )}
             </section>
           )}
         </main>
+
+        {/* 선생님 전용: 주간 업무 상세 팝업 모달 */}
+        {currentUser.role === "teacher" && selectedPopupTask && (
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+            onClick={() => setPopupTaskId(null)}
+          >
+            <div
+              className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 max-h-[88vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="px-2.5 py-0.5 rounded-md bg-blue-600 text-white font-bold">
+                      {selectedPopupTask.weekLabel}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">
+                      대상: {selectedPopupTask.assignee}
+                    </span>
+                    <span className="text-slate-400">등록일: {selectedPopupTask.createdAt}</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-900">
+                    {selectedPopupTask.title}
+                  </h3>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPopupTaskId(null)}
+                  className="text-slate-400 hover:text-slate-700 text-lg font-bold px-2 py-1"
+                  aria-label="팝업 닫기"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto bg-slate-50 border border-slate-200 rounded-xl p-5 text-sm text-slate-800 whitespace-pre-line leading-relaxed">
+                {selectedPopupTask.detail}
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                <label className="inline-flex items-center gap-2 text-xs font-extrabold text-slate-800 cursor-pointer select-none bg-emerald-50 px-3.5 py-2 rounded-xl border border-emerald-200">
+                  <input
+                    type="checkbox"
+                    checked={selectedPopupTask.checkedByTeacher}
+                    onChange={() => handleToggleWeeklyTaskChecked(selectedPopupTask.id)}
+                    className="w-4 h-4 accent-emerald-600"
+                  />
+                  <span>이 주간 업무 내용을 확인했습니다 (확인 완료)</span>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setPopupTaskId(null)}
+                  className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition"
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -3864,7 +3976,6 @@ export default function Home() {
           {/* 3. 통합 책 인덱스(Book Index) 워크스페이스: 기초정보 > 지난 차시 > 오늘수업 > 다음차시 */}
           {selectedStudent && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              {/* 책 인덱스 상단 탭 바 */}
               <div className="bg-slate-100 px-4 pt-3 border-b border-slate-200 flex flex-wrap items-end justify-between gap-2">
                 <div className="flex flex-wrap items-end gap-1.5">
                   <button
@@ -3930,7 +4041,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 현재 학생 단기목표 1줄 퀵 리마인더 바 */}
               {iepIndexTab !== "profile" && (
                 <div className="bg-blue-50/60 border-b border-blue-100 px-6 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-2 min-w-0">
@@ -3951,7 +4061,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* 관리자 검토 피드백 배너 */}
               {currentIEP.adminFeedback && (
                 <div className="mx-6 mt-5 p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-950">
                   <span className="font-extrabold text-emerald-800 block mb-0.5">
