@@ -1285,7 +1285,7 @@ export default function Home() {
           onClick={() => setActivePage("timetable")}
           className="text-lg font-bold text-slate-800 hover:text-blue-600 transition"
         >
-          IEP 수업 & 학생 관리
+          사이언스 특수체육 수성센터
         </button>
 
         <span
