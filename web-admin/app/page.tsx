@@ -4298,3 +4298,318 @@ export default function Home() {
     </div>
   );
 }
+"use client";
+
+import React, { useEffect, useState } from "react";
+
+type Role = "admin" | "teacher";
+
+type WeeklyTask = {
+  id: string;
+  weekLabel: string;
+  title: string;
+  detail: string;
+  assignee: string;
+  createdAt: string;
+  checkedByTeacher: boolean;
+};
+
+const WEEKLY_TASKS_STORAGE_KEY = "iep_portal_weekly_tasks_v1";
+
+const INITIAL_TASKS: WeeklyTask[] = [
+  {
+    id: "sample-1",
+    weekLabel: "11월 4주차",
+    title: "개별화교육계획(IEP) 주간 관찰 기록 입력",
+    detail: "담당 학생의 수업 참여도 및 목표 성취 관찰 내용을 금요일 오후 4시까지 기록해 주세요.",
+    assignee: "전체 교사",
+    createdAt: "2026. 11. 24.",
+    checkedByTeacher: false,
+  },
+];
+
+export default function HomePage() {
+  const [role, setRole] = useState<Role>("admin");
+  const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTask[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // 관리자 입력 폼 상태
+  const [weekLabel, setWeekLabel] = useState("11월 4주차");
+  const [title, setTitle] = useState("");
+  const [detail, setDetail] = useState("");
+  const [assignee, setAssignee] = useState("전체 교사");
+
+  // localStorage에서 주간 업무 불러오기
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(WEEKLY_TASKS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as WeeklyTask[];
+        setWeeklyTasks(parsed);
+      } else {
+        setWeeklyTasks(INITIAL_TASKS);
+        localStorage.setItem(WEEKLY_TASKS_STORAGE_KEY, JSON.stringify(INITIAL_TASKS));
+      }
+    } catch {
+      setWeeklyTasks(INITIAL_TASKS);
+    } finally {
+      setIsLoaded(true);
+    }
+  }, []);
+
+  // 주간 업무 변경 시 localStorage 저장
+  const saveTasks = (nextTasks: WeeklyTask[]) => {
+    setWeeklyTasks(nextTasks);
+    try {
+      localStorage.setItem(WEEKLY_TASKS_STORAGE_KEY, JSON.stringify(nextTasks));
+    } catch {
+      // 저장 공간 제한 등 예외 무시
+    }
+  };
+
+  const handleAddTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+
+    const newTask: WeeklyTask = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      weekLabel: weekLabel.trim() || "이번 주",
+      title: title.trim(),
+      detail: detail.trim() || "상세 지시사항 없음",
+      assignee: assignee.trim() || "전체 교사",
+      createdAt: new Date().toLocaleDateString("ko-KR"),
+      checkedByTeacher: false,
+    };
+
+    saveTasks([newTask, ...weeklyTasks]);
+    setTitle("");
+    setDetail("");
+  };
+
+  const handleDeleteTask = (id: string) => {
+    saveTasks(weeklyTasks.filter((task) => task.id !== id));
+  };
+
+  const handleToggleChecked = (id: string) => {
+    saveTasks(
+      weeklyTasks.map((task) =>
+        task.id === id ? { ...task, checkedByTeacher: !task.checkedByTeacher } : task
+      )
+    );
+  };
+
+  return (
+    <main className="min-h-screen bg-slate-50 text-slate-900 p-6">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* 상단 헤더 및 역할 전환 */}
+        <header className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 shadow-sm">
+          <div>
+            <h1 className="text-xl font-bold">IEP 통합 관리 포털 · 주간 업무</h1>
+            <p className="text-sm text-slate-500 mt-1">
+              관리자가 지시한 주간 업무를 등록하고 교사 화면에서 확인할 수 있습니다.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setRole("admin")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                role === "admin"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              관리자
+            </button>
+            <button
+              type="button"
+              onClick={() => setRole("teacher")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                role === "teacher"
+                  ? "bg-blue-600 text-white"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              교사
+            </button>
+          </div>
+        </header>
+
+        {/* 관리자 화면: 주간 업무 입력 및 지시 관리 */}
+        {role === "admin" && (
+          <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold">주간 업무 지시 입력</h2>
+              <p className="text-sm text-slate-500">
+                등록한 주간 업무는 교사 화면의 주간 업무 목록에 바로 표시됩니다.
+              </p>
+            </div>
+
+            <form onSubmit={handleAddTask} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">주차 구분</label>
+                  <input
+                    type="text"
+                    value={weekLabel}
+                    onChange={(e) => setWeekLabel(e.target.value)}
+                    placeholder="예: 11월 4주차"
+                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">대상 교사</label>
+                  <input
+                    type="text"
+                    value={assignee}
+                    onChange={(e) => setAssignee(e.target.value)}
+                    placeholder="예: 전체 교사 또는 김휘원 선생님"
+                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">주간 업무 제목 *</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="예: 주간 IEP 상담 일지 및 목표 점검표 제출"
+                  required
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">상세 지시사항</label>
+                <textarea
+                  rows={3}
+                  value={detail}
+                  onChange={(e) => setDetail(e.target.value)}
+                  placeholder="선생님들께 전달할 세부 지시 내용이나 기한을 입력하세요."
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition"
+                >
+                  주간 업무 등록
+                </button>
+              </div>
+            </form>
+
+            {/* 관리자 등록 목록 */}
+            <div className="pt-4 border-t border-slate-100 space-y-3">
+              <h3 className="text-sm font-semibold text-slate-700">
+                등록된 주간 업무 ({weeklyTasks.length}건)
+              </h3>
+              {!isLoaded ? (
+                <p className="text-sm text-slate-400">불러오는 중...</p>
+              ) : weeklyTasks.length === 0 ? (
+                <p className="text-sm text-slate-400">등록된 주간 업무가 없습니다.</p>
+              ) : (
+                <ul className="space-y-2.5">
+                  {weeklyTasks.map((task) => (
+                    <li
+                      key={task.id}
+                      className="border border-slate-200 rounded-xl p-4 flex items-start justify-between gap-4"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 font-medium">
+                            {task.weekLabel}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-medium">
+                            대상: {task.assignee}
+                          </span>
+                          <span className="text-slate-400">등록일: {task.createdAt}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-md font-medium ${
+                              task.checkedByTeacher
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            {task.checkedByTeacher ? "교사 확인 완료" : "확인 대기"}
+                          </span>
+                        </div>
+                        <p className="font-semibold text-sm">{task.title}</p>
+                        <p className="text-sm text-slate-600 whitespace-pre-line">{task.detail}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTask(task.id)}
+                        className="text-xs text-rose-600 hover:underline shrink-0"
+                      >
+                        삭제
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* 교사 화면: 지시된 주간 업무 조회 */}
+        {role === "teacher" && (
+          <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold">교사 주간 업무 안내</h2>
+              <p className="text-sm text-slate-500">
+                관리자가 등록한 주간 지시사항을 확인하고 확인 완료를 체크할 수 있습니다.
+              </p>
+            </div>
+
+            {!isLoaded ? (
+              <p className="text-sm text-slate-400">불러오는 중...</p>
+            ) : weeklyTasks.length === 0 ? (
+              <div className="border border-dashed border-slate-300 rounded-xl p-8 text-center text-sm text-slate-500">
+                현재 전달된 주간 업무가 없습니다.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {weeklyTasks.map((task) => (
+                  <article
+                    key={task.id}
+                    className="border border-slate-200 rounded-xl p-4 space-y-2"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 font-semibold">
+                          {task.weekLabel}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
+                          대상: {task.assignee}
+                        </span>
+                        <span className="text-slate-400">{task.createdAt}</span>
+                      </div>
+
+                      <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={task.checkedByTeacher}
+                          onChange={() => handleToggleChecked(task.id)}
+                          className="rounded border-slate-300"
+                        />
+                        <span>확인 완료</span>
+                      </label>
+                    </div>
+
+                    <h3 className="text-base font-semibold">{task.title}</h3>
+                    <p className="text-sm text-slate-600 whitespace-pre-line">{task.detail}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+      </div>
+    </main>
+  );
+}
