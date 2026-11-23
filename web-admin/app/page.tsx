@@ -9,6 +9,18 @@ type AttendanceStatus = "출석" | "결석" | "보강";
 type GoalProgressStatus = "달성 완료" | "진행 중(향상)" | "지원 필요";
 type IepBookTab = "profile" | "prev" | "today" | "next";
 
+type ColorKey =
+  | "cyan"
+  | "emerald"
+  | "violet"
+  | "amber"
+  | "rose"
+  | "teal"
+  | "sky"
+  | "fuchsia"
+  | "lime"
+  | "orange";
+
 const DAYS: DayOfWeek[] = ["월", "화", "수", "목", "금", "토"];
 const PERIODS = [1, 2, 3, 4, 5, 6, 7];
 
@@ -47,6 +59,7 @@ interface Student {
 interface ClassCategory {
   id: string;
   name: string;
+  colorKey?: ColorKey;
 }
 
 interface TimetableSlot {
@@ -84,6 +97,9 @@ interface WeeklyTask {
 }
 
 interface CategoryTheme {
+  key: ColorKey;
+  label: string;
+  swatch: string;
   card: string;
   badge: string;
   pill: string;
@@ -91,10 +107,12 @@ interface CategoryTheme {
   modalActive: string;
 }
 
-// --- 수업 종류별 색상 테마 ---
-const CATEGORY_THEMES: CategoryTheme[] = [
+// --- 검정·흰색 제외한 10가지 색상 팔레트 ---
+const COLOR_PALETTE: CategoryTheme[] = [
   {
-    // 수중: 시안/하늘색
+    key: "cyan",
+    label: "시안",
+    swatch: "bg-cyan-500",
     card: "bg-cyan-50/90 hover:bg-cyan-100/90 border-cyan-300",
     badge: "bg-cyan-600 text-white",
     pill: "bg-cyan-100 text-cyan-900 border-cyan-200",
@@ -102,7 +120,9 @@ const CATEGORY_THEMES: CategoryTheme[] = [
     modalActive: "bg-cyan-600 text-white border-cyan-600 shadow-sm",
   },
   {
-    // PT: 에메랄드/초록색
+    key: "emerald",
+    label: "에메랄드",
+    swatch: "bg-emerald-500",
     card: "bg-emerald-50/90 hover:bg-emerald-100/90 border-emerald-300",
     badge: "bg-emerald-600 text-white",
     pill: "bg-emerald-100 text-emerald-900 border-emerald-200",
@@ -110,7 +130,9 @@ const CATEGORY_THEMES: CategoryTheme[] = [
     modalActive: "bg-emerald-600 text-white border-emerald-600 shadow-sm",
   },
   {
-    // 재활: 바이올렛/보라색
+    key: "violet",
+    label: "바이올렛",
+    swatch: "bg-violet-500",
     card: "bg-violet-50/90 hover:bg-violet-100/90 border-violet-300",
     badge: "bg-violet-600 text-white",
     pill: "bg-violet-100 text-violet-900 border-violet-200",
@@ -118,7 +140,9 @@ const CATEGORY_THEMES: CategoryTheme[] = [
     modalActive: "bg-violet-600 text-white border-violet-600 shadow-sm",
   },
   {
-    // 특수체육: 앰버/주황색
+    key: "amber",
+    label: "앰버",
+    swatch: "bg-amber-500",
     card: "bg-amber-50/90 hover:bg-amber-100/90 border-amber-300",
     badge: "bg-amber-600 text-white",
     pill: "bg-amber-100 text-amber-900 border-amber-200",
@@ -126,7 +150,9 @@ const CATEGORY_THEMES: CategoryTheme[] = [
     modalActive: "bg-amber-600 text-white border-amber-600 shadow-sm",
   },
   {
-    // 추가 프로그램 1: 로즈/핑크
+    key: "rose",
+    label: "로즈",
+    swatch: "bg-rose-500",
     card: "bg-rose-50/90 hover:bg-rose-100/90 border-rose-300",
     badge: "bg-rose-600 text-white",
     pill: "bg-rose-100 text-rose-900 border-rose-200",
@@ -134,27 +160,73 @@ const CATEGORY_THEMES: CategoryTheme[] = [
     modalActive: "bg-rose-600 text-white border-rose-600 shadow-sm",
   },
   {
-    // 추가 프로그램 2: 틸/청록색
+    key: "teal",
+    label: "틸",
+    swatch: "bg-teal-500",
     card: "bg-teal-50/90 hover:bg-teal-100/90 border-teal-300",
     badge: "bg-teal-600 text-white",
     pill: "bg-teal-100 text-teal-900 border-teal-200",
     titleHover: "group-hover:text-teal-800",
     modalActive: "bg-teal-600 text-white border-teal-600 shadow-sm",
   },
+  {
+    key: "sky",
+    label: "스카이",
+    swatch: "bg-sky-500",
+    card: "bg-sky-50/90 hover:bg-sky-100/90 border-sky-300",
+    badge: "bg-sky-600 text-white",
+    pill: "bg-sky-100 text-sky-900 border-sky-200",
+    titleHover: "group-hover:text-sky-800",
+    modalActive: "bg-sky-600 text-white border-sky-600 shadow-sm",
+  },
+  {
+    key: "fuchsia",
+    label: "푸시아",
+    swatch: "bg-fuchsia-500",
+    card: "bg-fuchsia-50/90 hover:bg-fuchsia-100/90 border-fuchsia-300",
+    badge: "bg-fuchsia-600 text-white",
+    pill: "bg-fuchsia-100 text-fuchsia-900 border-fuchsia-200",
+    titleHover: "group-hover:text-fuchsia-800",
+    modalActive: "bg-fuchsia-600 text-white border-fuchsia-600 shadow-sm",
+  },
+  {
+    key: "lime",
+    label: "라임",
+    swatch: "bg-lime-500",
+    card: "bg-lime-50/90 hover:bg-lime-100/90 border-lime-300",
+    badge: "bg-lime-600 text-white",
+    pill: "bg-lime-100 text-lime-900 border-lime-200",
+    titleHover: "group-hover:text-lime-800",
+    modalActive: "bg-lime-600 text-white border-lime-600 shadow-sm",
+  },
+  {
+    key: "orange",
+    label: "오렌지",
+    swatch: "bg-orange-500",
+    card: "bg-orange-50/90 hover:bg-orange-100/90 border-orange-300",
+    badge: "bg-orange-600 text-white",
+    pill: "bg-orange-100 text-orange-900 border-orange-200",
+    titleHover: "group-hover:text-orange-800",
+    modalActive: "bg-orange-600 text-white border-orange-600 shadow-sm",
+  },
 ];
 
-function getCategoryTheme(categoryName: string): CategoryTheme {
-  const normalized = categoryName.trim();
-  if (normalized === "수중") return CATEGORY_THEMES[0];
-  if (normalized === "PT") return CATEGORY_THEMES[1];
-  if (normalized === "재활") return CATEGORY_THEMES[2];
-  if (normalized === "특수체육") return CATEGORY_THEMES[3];
+function getThemeByColorKey(colorKey?: ColorKey, fallbackSeed = ""): CategoryTheme {
+  if (colorKey) {
+    const found = COLOR_PALETTE.find((item) => item.key === colorKey);
+    if (found) return found;
+  }
+  const normalized = fallbackSeed.trim();
+  if (normalized === "수중") return COLOR_PALETTE[0];
+  if (normalized === "PT") return COLOR_PALETTE[1];
+  if (normalized === "재활") return COLOR_PALETTE[2];
+  if (normalized === "특수체육") return COLOR_PALETTE[3];
 
   let hash = 0;
   for (let i = 0; i < normalized.length; i++) {
     hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
   }
-  return CATEGORY_THEMES[hash % CATEGORY_THEMES.length];
+  return COLOR_PALETTE[hash % COLOR_PALETTE.length];
 }
 
 // --- 초기 계정 및 테스트 데이터 ---
@@ -165,10 +237,10 @@ const INITIAL_USERS: UserAccount[] = [
 ];
 
 const INITIAL_CATEGORIES: ClassCategory[] = [
-  { id: "cat-1", name: "수중" },
-  { id: "cat-2", name: "PT" },
-  { id: "cat-3", name: "재활" },
-  { id: "cat-4", name: "특수체육" },
+  { id: "cat-1", name: "수중", colorKey: "cyan" },
+  { id: "cat-2", name: "PT", colorKey: "emerald" },
+  { id: "cat-3", name: "재활", colorKey: "violet" },
+  { id: "cat-4", name: "특수체육", colorKey: "amber" },
 ];
 
 const INITIAL_STUDENTS: Student[] = [
@@ -563,10 +635,12 @@ export default function Home() {
   const [studentShortGoalInput, setStudentShortGoalInput] = useState<string>("");
   const [studentMessage, setStudentMessage] = useState<string>("");
 
-  // 관리자 전용: 수업 종류 관리 상태
+  // 관리자 전용: 수업 종류 및 색상 관리 상태
   const [newCategoryName, setNewCategoryName] = useState<string>("");
+  const [newCategoryColorKey, setNewCategoryColorKey] = useState<ColorKey>("sky");
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState<string>("");
+  const [editingCategoryColorKey, setEditingCategoryColorKey] = useState<ColorKey>("cyan");
   const [categoryMessage, setCategoryMessage] = useState<string>("");
 
   // 관리자 전용: 선생님 계정 생성 폼 상태
@@ -607,7 +681,15 @@ export default function Home() {
 
       if (savedUsers) setUsers(parsedUsers);
       if (savedStudents) setStudents(parsedStudents);
-      if (savedCategories) setCategories(JSON.parse(savedCategories));
+      if (savedCategories) {
+        const parsedCats: ClassCategory[] = JSON.parse(savedCategories);
+        setCategories(
+          parsedCats.map((c) => ({
+            ...c,
+            colorKey: c.colorKey || getThemeByColorKey(undefined, c.name).key,
+          }))
+        );
+      }
       if (savedTimetable) setTimetable(parsedTimetable);
 
       if (savedIepRecords) {
@@ -813,8 +895,19 @@ export default function Home() {
   const weekKey = formatDateKey(currentMonday);
   const weekRangeLabel = `${currentMonday.getFullYear()}년 ${formatShortDate(currentMonday, 0)} (월) ~ ${formatShortDate(currentMonday, 5)} (토)`;
 
-  const getCategoryName = (catId: string) =>
-    categories.find((c) => c.id === catId)?.name || "미지정";
+  const getCategoryById = (catId: string) => categories.find((c) => c.id === catId);
+  const getCategoryName = (catId: string) => getCategoryById(catId)?.name || "미지정";
+  const getCategoryTheme = (catIdOrName: string): CategoryTheme => {
+    const byId = categories.find((c) => c.id === catIdOrName);
+    if (byId) {
+      return getThemeByColorKey(byId.colorKey, byId.name);
+    }
+    const byName = categories.find((c) => c.name === catIdOrName);
+    if (byName) {
+      return getThemeByColorKey(byName.colorKey, byName.name);
+    }
+    return getThemeByColorKey(undefined, catIdOrName);
+  };
 
   const getStudentAttendanceStats = (studentId: string) => {
     let present = 0;
@@ -1027,6 +1120,15 @@ export default function Home() {
     }
   };
 
+  const handleChangeCategoryColor = (catId: string, colorKey: ColorKey) => {
+    const colorLabel = COLOR_PALETTE.find((c) => c.key === colorKey)?.label || colorKey;
+    setCategories((prev) =>
+      prev.map((cat) => (cat.id === catId ? { ...cat, colorKey } : cat))
+    );
+    setCategoryMessage(`🎨 색상이 '${colorLabel}'(으)로 변경되었습니다.`);
+    setTimeout(() => setCategoryMessage(""), 2500);
+  };
+
   const toggleModalStudent = (studentId: string) => {
     setModalStudentIds((prev) =>
       prev.includes(studentId) ? prev.filter((id) => id !== studentId) : [...prev, studentId]
@@ -1167,8 +1269,14 @@ export default function Home() {
       setCategoryMessage("⚠️ 이미 등록된 수업 종류입니다.");
       return;
     }
-    setCategories((prev) => [...prev, { id: `cat-${Date.now()}`, name: trimmed }]);
+    setCategories((prev) => [
+      ...prev,
+      { id: `cat-${Date.now()}`, name: trimmed, colorKey: newCategoryColorKey },
+    ]);
     setNewCategoryName("");
+    const nextColor =
+      COLOR_PALETTE[(categories.length + 1) % COLOR_PALETTE.length]?.key || "sky";
+    setNewCategoryColorKey(nextColor);
     setCategoryMessage(`✅ '${trimmed}' 수업 종류가 추가되었습니다.`);
     setTimeout(() => setCategoryMessage(""), 3000);
   };
@@ -1177,11 +1285,13 @@ export default function Home() {
     const trimmed = editingCategoryName.trim();
     if (!trimmed) return;
     setCategories((prev) =>
-      prev.map((c) => (c.id === catId ? { ...c, name: trimmed } : c))
+      prev.map((c) =>
+        c.id === catId ? { ...c, name: trimmed, colorKey: editingCategoryColorKey } : c
+      )
     );
     setEditingCategoryId(null);
     setEditingCategoryName("");
-    setCategoryMessage("✅ 수업 종류명이 수정되었습니다.");
+    setCategoryMessage("✅ 수업 종류 및 색상이 수정되었습니다.");
     setTimeout(() => setCategoryMessage(""), 3000);
   };
 
@@ -1455,7 +1565,7 @@ export default function Home() {
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                🏷️ 수업 종류 ({categories.length})
+                🏷️ 수업 종류·색상 ({categories.length})
               </button>
               <button
                 onClick={() => setActivePage("accounts")}
@@ -1957,6 +2067,7 @@ export default function Home() {
         const slot = timetable.find((s) => s.id === slotId);
         const exactDate = slot ? getExactDateFromMondayKey(mondayKey, slot.day) : mondayKey;
         const categoryName = slot ? getCategoryName(slot.categoryId) : "수업";
+        const theme = slot ? getCategoryTheme(slot.categoryId) : getCategoryTheme(categoryName);
 
         return {
           key,
@@ -1965,6 +2076,7 @@ export default function Home() {
           exactDate,
           dayPeriod: slot ? `${slot.day}${slot.period}` : "-",
           categoryName,
+          theme,
           attendance: attendanceRecords[key],
           record: iepRecords[key] || {
             sessionGoal: "",
@@ -2299,7 +2411,7 @@ export default function Home() {
                                       }
 
                                       const catName = getCategoryName(slot.categoryId);
-                                      const theme = getCategoryTheme(catName);
+                                      const theme = getCategoryTheme(slot.categoryId);
                                       const sessionKey = `${historyWeekKey}_${slot.id}_${targetStudent.id}`;
                                       const rec = iepRecords[sessionKey];
                                       const att = attendanceRecords[sessionKey];
@@ -2363,7 +2475,9 @@ export default function Home() {
                                   ? getExactDateFromMondayKey(mKey, slot.day)
                                   : mKey;
                                 const catName = slot ? getCategoryName(slot.categoryId) : "수업";
-                                const theme = getCategoryTheme(catName);
+                                const theme = slot
+                                  ? getCategoryTheme(slot.categoryId)
+                                  : getCategoryTheme(catName);
                                 const rec = iepRecords[selectedHistoryKey];
                                 const att = attendanceRecords[selectedHistoryKey];
 
@@ -2478,7 +2592,6 @@ export default function Home() {
                           ) : (
                             studentHistoryList.map((item) => {
                               const isExpanded = activeDetailItem?.key === item.key;
-                              const theme = getCategoryTheme(item.categoryName);
 
                               return (
                                 <div
@@ -2502,7 +2615,7 @@ export default function Home() {
                                         {item.exactDate} ({item.dayPeriod}) ·
                                       </span>
                                       <span
-                                        className={`px-2 py-0.5 text-xs font-extrabold rounded-md border ${theme.pill}`}
+                                        className={`px-2 py-0.5 text-xs font-extrabold rounded-md border ${item.theme.pill}`}
                                       >
                                         {item.categoryName}
                                       </span>
@@ -3106,7 +3219,7 @@ export default function Home() {
                           }
 
                           const catName = getCategoryName(slot.categoryId);
-                          const theme = getCategoryTheme(catName);
+                          const theme = getCategoryTheme(slot.categoryId);
                           const targetIds =
                             reviewStudentFilterId === "all"
                               ? slot.studentIds
@@ -3666,19 +3779,19 @@ export default function Home() {
   }
 
   // ============================================================================
-  // [관리자 전용 페이지 2] 수업 종류 관리 화면
+  // [관리자 전용 페이지 2] 수업 종류 및 색상 관리 화면 (10색 팔레트 선택 지원)
   // ============================================================================
   if (currentUser.role === "admin" && activePage === "categories") {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
         {renderHeader()}
 
-        <main className="flex-1 max-w-4xl w-full mx-auto p-6 space-y-6">
+        <main className="flex-1 max-w-5xl w-full mx-auto p-6 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-bold text-slate-800">🏷️ 수업 종류(프로그램) 관리</h2>
+              <h2 className="text-xl font-bold text-slate-800">🏷️ 수업 종류 및 색상 관리</h2>
               <p className="text-xs text-slate-500 mt-1">
-                시간표 편성 시 선택할 수 있는 수업 종류(예: 수중, PT, 재활, 특수체육)를 추가하거나 이름을 수정할 수 있습니다.
+                수업 종류를 추가하거나 수정할 때 <strong>10가지 색상</strong> 중 원하는 색상을 직접 선택할 수 있습니다. (검정·흰색 제외)
               </p>
             </div>
             {categoryMessage && (
@@ -3688,8 +3801,8 @@ export default function Home() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-            <section className="md:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm h-fit">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <section className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm h-fit">
               <h3 className="text-base font-bold text-slate-800 mb-4 pb-3 border-b border-slate-100">
                 ➕ 새 수업 종류 추가
               </h3>
@@ -3709,6 +3822,34 @@ export default function Home() {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-2">
+                    색상 선택 (10가지)
+                  </label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {COLOR_PALETTE.map((colorItem) => {
+                      const selected = newCategoryColorKey === colorItem.key;
+                      return (
+                        <button
+                          type="button"
+                          key={colorItem.key}
+                          onClick={() => setNewCategoryColorKey(colorItem.key)}
+                          className={`p-2 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                            selected
+                              ? "border-slate-800 bg-slate-100 ring-2 ring-slate-800"
+                              : "border-slate-200 bg-white hover:bg-slate-50"
+                          }`}
+                        >
+                          <span className={`w-5 h-5 rounded-full ${colorItem.swatch}`} />
+                          <span className="text-[10px] font-bold text-slate-700">
+                            {colorItem.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition shadow-sm"
@@ -3718,75 +3859,137 @@ export default function Home() {
               </form>
             </section>
 
-            <section className="md:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-              <h3 className="text-base font-bold text-slate-800 mb-4 pb-3 border-b border-slate-100">
-                📋 등록된 수업 종류 목록 ({categories.length}개)
-              </h3>
+            <section className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                <h3 className="text-base font-bold text-slate-800">
+                  📋 등록된 수업 종류 및 색상 ({categories.length}개)
+                </h3>
+                <span className="text-[11px] text-slate-400">
+                  색상 점을 누르면 즉시 색상이 변경됩니다
+                </span>
+              </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {categories.map((cat) => {
                   const usedCount = timetable.filter((s) => s.categoryId === cat.id).length;
                   const isEditing = editingCategoryId === cat.id;
-                  const theme = getCategoryTheme(cat.name);
+                  const theme = getThemeByColorKey(cat.colorKey, cat.name);
 
                   return (
                     <div
                       key={cat.id}
-                      className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex items-center justify-between gap-3"
+                      className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3"
                     >
                       {isEditing ? (
-                        <div className="flex-1 flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={editingCategoryName}
-                            onChange={(e) => setEditingCategoryName(e.target.value)}
-                            className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-800"
-                          />
-                          <button
-                            onClick={() => handleSaveEditCategory(cat.id)}
-                            className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg"
-                          >
-                            저장
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditingCategoryId(null);
-                              setEditingCategoryName("");
-                            }}
-                            className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs font-bold rounded-lg"
-                          >
-                            취소
-                          </button>
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={editingCategoryName}
+                              onChange={(e) => setEditingCategoryName(e.target.value)}
+                              className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-800"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEditCategory(cat.id)}
+                              className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg"
+                            >
+                              저장
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingCategoryId(null);
+                                setEditingCategoryName("");
+                              }}
+                              className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs font-bold rounded-lg"
+                            >
+                              취소
+                            </button>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {COLOR_PALETTE.map((colorItem) => {
+                              const selected = editingCategoryColorKey === colorItem.key;
+                              return (
+                                <button
+                                  type="button"
+                                  key={colorItem.key}
+                                  onClick={() => setEditingCategoryColorKey(colorItem.key)}
+                                  className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 transition ${
+                                    selected
+                                      ? "border-slate-800 bg-slate-800 text-white"
+                                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  <span className={`w-3 h-3 rounded-full ${colorItem.swatch}`} />
+                                  <span>{colorItem.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       ) : (
                         <>
-                          <div className="flex items-center gap-2.5">
-                            <span
-                              className={`px-3 py-1 rounded-lg border text-sm font-extrabold ${theme.pill}`}
-                            >
-                              {cat.name}
-                            </span>
-                            <span className="text-xs text-slate-500">
-                              시간표 사용 {usedCount}건
-                            </span>
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5">
+                              <span
+                                className={`px-3 py-1 rounded-lg border text-sm font-extrabold ${theme.pill}`}
+                              >
+                                {cat.name}
+                              </span>
+                              <span className="text-xs font-semibold text-slate-600">
+                                ({theme.label})
+                              </span>
+                              <span className="text-xs text-slate-400">
+                                · 시간표 사용 {usedCount}건
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingCategoryId(cat.id);
+                                  setEditingCategoryName(cat.name);
+                                  setEditingCategoryColorKey(theme.key);
+                                }}
+                                className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-lg transition"
+                              >
+                                이름·색상 수정
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCategory(cat)}
+                                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg transition"
+                              >
+                                삭제
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => {
-                                setEditingCategoryId(cat.id);
-                                setEditingCategoryName(cat.name);
-                              }}
-                              className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-lg transition"
-                            >
-                              수정
-                            </button>
-                            <button
-                              onClick={() => handleDeleteCategory(cat)}
-                              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg transition"
-                            >
-                              삭제
-                            </button>
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/70">
+                            <span className="text-[11px] font-bold text-slate-400 mr-1">
+                              빠른 색상 선택:
+                            </span>
+                            {COLOR_PALETTE.map((colorItem) => {
+                              const isCurrent = theme.key === colorItem.key;
+                              return (
+                                <button
+                                  type="button"
+                                  key={colorItem.key}
+                                  title={`${colorItem.label} 선택`}
+                                  onClick={() => handleChangeCategoryColor(cat.id, colorItem.key)}
+                                  className={`w-6 h-6 rounded-full ${colorItem.swatch} transition flex items-center justify-center text-[10px] font-extrabold text-white ${
+                                    isCurrent
+                                      ? "ring-2 ring-offset-2 ring-slate-800 scale-110"
+                                      : "opacity-75 hover:opacity-100 hover:scale-105"
+                                  }`}
+                                >
+                                  {isCurrent ? "✓" : ""}
+                                </button>
+                              );
+                            })}
                           </div>
                         </>
                       )}
@@ -3983,7 +4186,7 @@ export default function Home() {
 
     const exactClassDate = getExactDateFromMondayKey(weekKey, selectedSlot.day);
     const categoryName = getCategoryName(selectedSlot.categoryId);
-    const categoryTheme = getCategoryTheme(categoryName);
+    const categoryTheme = getCategoryTheme(selectedSlot.categoryId);
     const slotStudents = students.filter((s) => selectedSlot.studentIds.includes(s.id));
     const selectedStudent =
       slotStudents.find((s) => s.id === selectedStudentId) || slotStudents[0];
@@ -4764,7 +4967,7 @@ export default function Home() {
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] font-bold text-slate-400 mr-0.5">수업 색상 범례:</span>
                 {categories.map((cat) => {
-                  const theme = getCategoryTheme(cat.name);
+                  const theme = getCategoryTheme(cat.id);
                   return (
                     <span
                       key={cat.id}
@@ -4835,7 +5038,7 @@ export default function Home() {
                         (s) => s.day === day && s.period === period
                       );
                       const catName = slot ? getCategoryName(slot.categoryId) : "";
-                      const theme = slot ? getCategoryTheme(catName) : null;
+                      const theme = slot ? getCategoryTheme(slot.categoryId) : null;
 
                       return (
                         <td
@@ -4958,13 +5161,13 @@ export default function Home() {
                     }}
                     className="text-[11px] font-bold text-blue-600 hover:underline"
                   >
-                    + 수업 종류 추가/수정
+                    + 수업 종류·색상 관리
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {categories.map((cat) => {
                     const isSelected = modalCategoryId === cat.id;
-                    const theme = getCategoryTheme(cat.name);
+                    const theme = getCategoryTheme(cat.id);
                     return (
                       <button
                         type="button"
@@ -4983,6 +5186,35 @@ export default function Home() {
                   })}
                 </div>
               </div>
+
+              {modalCategoryId && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    선택한 수업 색상 (10가지)
+                  </label>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {COLOR_PALETTE.map((colorItem) => {
+                      const currentCatTheme = getCategoryTheme(modalCategoryId);
+                      const isCurrentColor = currentCatTheme.key === colorItem.key;
+                      return (
+                        <button
+                          type="button"
+                          key={colorItem.key}
+                          title={colorItem.label}
+                          onClick={() => handleChangeCategoryColor(modalCategoryId, colorItem.key)}
+                          className={`w-6 h-6 rounded-full ${colorItem.swatch} transition flex items-center justify-center text-[10px] font-extrabold text-white ${
+                            isCurrentColor
+                              ? "ring-2 ring-offset-2 ring-slate-800 scale-110"
+                              : "opacity-75 hover:opacity-100"
+                          }`}
+                        >
+                          {isCurrentColor ? "✓" : ""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
