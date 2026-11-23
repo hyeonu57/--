@@ -1437,7 +1437,7 @@ export default function Home() {
             <div className="flex items-center justify-between">
               <p className="font-bold text-slate-600">💡 계정 및 저장 안내:</p>
               <span className="text-[11px] font-semibold text-emerald-600">
-                ● 브라우저 자동 저장·세션 유지 활성
+          
               </span>
             </div>
             <div className="flex justify-between bg-slate-50 px-3 py-1.5 rounded-lg">
