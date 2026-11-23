@@ -507,7 +507,7 @@ export default function Home() {
     sessionStorage.setItem(STORAGE_KEYS.SESSION_PAGE, activePage);
   }, [activePage, currentUser, isStorageLoaded]);
 
-  // --- JSON 백업 내보내기 / 불러오기 / 초기화 ---
+  // --- JSON 백업 내보내기 / 불러오기 ---
   const handleExportBackupJson = () => {
     const backupPayload = {
       exportedAt: new Date().toISOString(),
@@ -558,27 +558,6 @@ export default function Home() {
       }
     };
     reader.readAsText(file);
-  };
-
-  const handleResetAllStorage = () => {
-    const defaultIep = createDefaultIEPRecords();
-    const defaultAtt = createDefaultAttendanceRecords();
-
-    setUsers(INITIAL_USERS);
-    setStudents(INITIAL_STUDENTS);
-    setCategories(INITIAL_CATEGORIES);
-    setTimetable(INITIAL_TIMETABLE);
-    setIepRecords(defaultIep);
-    setAttendanceRecords(defaultAtt);
-
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(INITIAL_STUDENTS));
-    localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(INITIAL_CATEGORIES));
-    localStorage.setItem(STORAGE_KEYS.TIMETABLE, JSON.stringify(INITIAL_TIMETABLE));
-    localStorage.setItem(STORAGE_KEYS.IEP_RECORDS, JSON.stringify(defaultIep));
-    localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(defaultAtt));
-
-    alert("초기 샘플 데이터로 복원되었습니다.");
   };
 
   // --- 파생 데이터 및 헬퍼 ---
@@ -1068,16 +1047,6 @@ export default function Home() {
                 </span>
               </div>
             ))}
-
-            <div className="pt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={handleResetAllStorage}
-                className="text-[11px] text-slate-400 hover:text-rose-600 underline transition"
-              >
-                🔄 초기 샘플 데이터로 초기화
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -3230,7 +3199,7 @@ export default function Home() {
                                 setEditingPwUserId(null);
                                 setUpdatedPassword("");
                               }}
-                              className="px-2 py-1.5 bg-slate-200 text-slate-700 text-xs font-bold rounded-lg"
+                              className="px-2.5 py-1.5 bg-slate-200 text-slate-700 text-xs font-bold rounded-lg"
                             >
                               취소
                             </button>
