@@ -392,20 +392,18 @@ function getWeekLabelByMonday(monday: Date): string {
   return `${year}년 ${month}월 ${weekNumber}주차 (${startStr}~${endStr})`;
 }
 
-// 기준 주간 앞뒤로 연속 주차 옵션 목록 생성
-function buildWeekOptions(baseMonday: Date, prevWeeks = 2, nextWeeks = 8) {
-  const options: { value: string; label: string; mondayKey: string }[] = [];
-  for (let offset = -prevWeeks; offset <= nextWeeks; offset++) {
-    const mon = new Date(baseMonday);
-    mon.setDate(baseMonday.getDate() + offset * 7);
-    const label = getWeekLabelByMonday(mon);
-    options.push({
-      value: label,
-      label,
-      mondayKey: formatDateKey(mon),
-    });
-  }
-  return options;
+// 달력 날짜 문자열(YYYY-MM-DD) -> 해당 주간 주차 정보 변환
+function getWeekInfoFromDateString(dateStr: string) {
+  const parts = dateStr.split("-").map(Number);
+  const parsed =
+    parts.length === 3 && !parts.some(Number.isNaN)
+      ? new Date(parts[0], parts[1] - 1, parts[2])
+      : new Date();
+  const mon = getMonday(parsed);
+  return {
+    weekLabel: getWeekLabelByMonday(mon),
+    weekStartDate: formatDateKey(mon),
+  };
 }
 
 // --- 주간 업무 대상 선생님 및 확인 상태 헬퍼 ---
@@ -596,10 +594,8 @@ export default function Home() {
   const [adminFeedbackDrafts, setAdminFeedbackDrafts] = useState<Record<string, string>>({});
   const [reviewSaveMsg, setReviewSaveMsg] = useState<string>("");
 
-  // 주간 업무 지시/조회 및 선생님 팝업 상태
-  const [taskWeekInput, setTaskWeekInput] = useState<string>(() =>
-    getWeekLabelByMonday(getMonday(new Date(2026, 10, 24)))
-  );
+  // 주간 업무 지시(달력 날짜 선택 → 자동 주차 변환) 및 선생님 팝업 상태
+  const [taskDateInput, setTaskDateInput] = useState<string>("2026-11-24");
   const [taskTitleInput, setTaskTitleInput] = useState<string>("");
   const [taskDetailInput, setTaskDetailInput] = useState<string>("");
   const [taskAssigneeInput, setTaskAssigneeInput] = useState<string>("전체 선생님");
@@ -656,11 +652,12 @@ export default function Home() {
   // 브라우저 마운트 시 실제 날짜 세팅 + localStorage & sessionStorage 복원
   useEffect(() => {
     try {
-      const todayMon = getMonday(new Date());
+      const now = new Date();
+      const todayMon = getMonday(now);
       setCurrentMonday(todayMon);
       setHistoryMonday(todayMon);
       setReviewMonday(todayMon);
-      setTaskWeekInput(getWeekLabelByMonday(todayMon));
+      setTaskDateInput(formatDateKey(now));
 
       const savedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
       const savedStudents = localStorage.getItem(STORAGE_KEYS.STUDENTS);
@@ -864,8 +861,6 @@ export default function Home() {
   const activeTeacher = teachersOnly.find((t) => t.id === activeTeacherId) || teachersOnly[0];
   const visibleTimetable = timetable.filter((slot) => slot.teacherId === activeTeacher?.id);
 
-  const weeklyTaskOptions = buildWeekOptions(currentMonday, 2, 8);
-
   const totalUncheckedIepCount = Object.values(iepRecords).filter((rec) => {
     const hasContent = Boolean(
       rec.sessionGoal.trim() ||
@@ -956,15 +951,14 @@ export default function Home() {
     return pastSessions[0] || null;
   };
 
-  // --- 주간 업무 등록/삭제/확인 체크 핸들러 ---
+  // --- 주간 업무 등록/삭제/확인 체크 핸들러 (달력 날짜 → 자동 주차 변환) ---
   const handleAddWeeklyTask = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedTitle = taskTitleInput.trim();
     if (!trimmedTitle) return;
 
-    const selectedWeekObj = weeklyTaskOptions.find((opt) => opt.value === taskWeekInput);
-    const chosenLabel = taskWeekInput || getWeekLabelByMonday(currentMonday);
-    const chosenMondayKey = selectedWeekObj?.mondayKey || formatDateKey(currentMonday);
+    const { weekLabel: chosenLabel, weekStartDate: chosenMondayKey } =
+      getWeekInfoFromDateString(taskDateInput);
     const chosenAssignee = taskAssigneeInput.trim() || "전체 선생님";
 
     const initialTeacherMap: Record<string, boolean> = {};
@@ -987,7 +981,9 @@ export default function Home() {
     setWeeklyTasks((prev) => [newTask, ...prev]);
     setTaskTitleInput("");
     setTaskDetailInput("");
-    setWeeklyTaskMessage(`✅ '${chosenLabel}' 주간 업무 지시가 등록되어 누적 보관됩니다.`);
+    setWeeklyTaskMessage(
+      `✅ 선택한 날짜(${taskDateInput})가 '${chosenLabel}'로 자동 반영되었습니다.`
+    );
     setTimeout(() => setWeeklyTaskMessage(""), 3500);
   };
 
@@ -1028,14 +1024,15 @@ export default function Home() {
     const next = new Date(currentMonday);
     next.setDate(currentMonday.getDate() + weeks * 7);
     setCurrentMonday(next);
-    setTaskWeekInput(getWeekLabelByMonday(next));
+    setTaskDateInput(formatDateKey(next));
     setSaveMessage("");
   };
 
   const resetToThisWeek = () => {
-    const todayMon = getMonday(new Date());
+    const now = new Date();
+    const todayMon = getMonday(now);
     setCurrentMonday(todayMon);
-    setTaskWeekInput(getWeekLabelByMonday(todayMon));
+    setTaskDateInput(formatDateKey(now));
     setSaveMessage("");
   };
 
@@ -1498,7 +1495,7 @@ export default function Home() {
             onClick={() => {
               setWeeklyTaskMessage("");
               setPopupTaskId(null);
-              setTaskWeekInput(getWeekLabelByMonday(currentMonday));
+              setTaskDateInput(formatDateKey(new Date()));
               setActivePage("weeklyTasks");
             }}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5 ${
@@ -1631,7 +1628,7 @@ export default function Home() {
   );
 
   // ============================================================================
-  // [공통 페이지] 주간 업무 지시(관리자 확장 작성칸·선생님별 확인 현황) & 조회/팝업 확인(선생님)
+  // [공통 페이지] 주간 업무 지시(관리자 달력 날짜 선택 → 자동 주차 변환) & 조회(선생님)
   // ============================================================================
   if (activePage === "weeklyTasks") {
     const visibleTasksForTeacher = weeklyTasks.filter((task) => {
@@ -1643,9 +1640,7 @@ export default function Home() {
       ? visibleTasksForTeacher.find((t) => t.id === popupTaskId) || null
       : null;
 
-    const hasSelectedWeekInOptions = weeklyTaskOptions.some(
-      (opt) => opt.value === taskWeekInput
-    );
+    const previewWeekInfo = getWeekInfoFromDateString(taskDateInput);
 
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -1661,7 +1656,7 @@ export default function Home() {
               </h2>
               <p className="text-xs text-slate-500 mt-1">
                 {currentUser.role === "admin"
-                  ? "확장된 작성 칸에 상세 지시사항을 입력하고, 오른쪽 목록에서 각 선생님의 확인 완료 여부를 한눈에 확인하세요."
+                  ? "달력에서 기준 날짜를 선택하면 해당 주간의 주차가 자동 계산되어 선생님 화면에 반영됩니다."
                   : "목록에서는 핵심 요약만 보시고, 업무 항목을 클릭하면 팝업 창이 열려 상세 내용을 편하게 읽을 수 있습니다."}
               </p>
             </div>
@@ -1683,22 +1678,18 @@ export default function Home() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">
-                        주차 선택 (실제 날짜 기준)
+                        기준 날짜 선택 (달력)
                       </label>
-                      <select
-                        value={taskWeekInput}
-                        onChange={(e) => setTaskWeekInput(e.target.value)}
+                      <input
+                        type="date"
+                        value={taskDateInput}
+                        onChange={(e) => setTaskDateInput(e.target.value)}
                         className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {!hasSelectedWeekInOptions && taskWeekInput && (
-                          <option value={taskWeekInput}>{taskWeekInput}</option>
-                        )}
-                        {weeklyTaskOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
+                        required
+                      />
+                      <p className="text-[11px] font-semibold text-blue-600 mt-1">
+                        → 자동 반영 주차: {previewWeekInfo.weekLabel}
+                      </p>
                     </div>
 
                     <div>
@@ -1728,7 +1719,7 @@ export default function Home() {
                       type="text"
                       value={taskTitleInput}
                       onChange={(e) => setTaskTitleInput(e.target.value)}
-                      placeholder="예: 11월 4주차 IEP 일지 작성 및 교구 점검 안내"
+                      placeholder="예: IEP 일지 작성 및 교구 점검 안내"
                       className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       required
                     />
