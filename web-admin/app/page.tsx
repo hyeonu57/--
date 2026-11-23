@@ -83,6 +83,80 @@ interface WeeklyTask {
   checkedByTeachers?: Record<string, boolean>; // 선생님 계정 ID별 확인 여부
 }
 
+interface CategoryTheme {
+  card: string;
+  badge: string;
+  pill: string;
+  titleHover: string;
+  modalActive: string;
+}
+
+// --- 수업 종류별 색상 테마 ---
+const CATEGORY_THEMES: CategoryTheme[] = [
+  {
+    // 수중: 시안/하늘색
+    card: "bg-cyan-50/90 hover:bg-cyan-100/90 border-cyan-300",
+    badge: "bg-cyan-600 text-white",
+    pill: "bg-cyan-100 text-cyan-900 border-cyan-200",
+    titleHover: "group-hover:text-cyan-800",
+    modalActive: "bg-cyan-600 text-white border-cyan-600 shadow-sm",
+  },
+  {
+    // PT: 에메랄드/초록색
+    card: "bg-emerald-50/90 hover:bg-emerald-100/90 border-emerald-300",
+    badge: "bg-emerald-600 text-white",
+    pill: "bg-emerald-100 text-emerald-900 border-emerald-200",
+    titleHover: "group-hover:text-emerald-800",
+    modalActive: "bg-emerald-600 text-white border-emerald-600 shadow-sm",
+  },
+  {
+    // 재활: 바이올렛/보라색
+    card: "bg-violet-50/90 hover:bg-violet-100/90 border-violet-300",
+    badge: "bg-violet-600 text-white",
+    pill: "bg-violet-100 text-violet-900 border-violet-200",
+    titleHover: "group-hover:text-violet-800",
+    modalActive: "bg-violet-600 text-white border-violet-600 shadow-sm",
+  },
+  {
+    // 특수체육: 앰버/주황색
+    card: "bg-amber-50/90 hover:bg-amber-100/90 border-amber-300",
+    badge: "bg-amber-600 text-white",
+    pill: "bg-amber-100 text-amber-900 border-amber-200",
+    titleHover: "group-hover:text-amber-800",
+    modalActive: "bg-amber-600 text-white border-amber-600 shadow-sm",
+  },
+  {
+    // 추가 프로그램 1: 로즈/핑크
+    card: "bg-rose-50/90 hover:bg-rose-100/90 border-rose-300",
+    badge: "bg-rose-600 text-white",
+    pill: "bg-rose-100 text-rose-900 border-rose-200",
+    titleHover: "group-hover:text-rose-800",
+    modalActive: "bg-rose-600 text-white border-rose-600 shadow-sm",
+  },
+  {
+    // 추가 프로그램 2: 틸/청록색
+    card: "bg-teal-50/90 hover:bg-teal-100/90 border-teal-300",
+    badge: "bg-teal-600 text-white",
+    pill: "bg-teal-100 text-teal-900 border-teal-200",
+    titleHover: "group-hover:text-teal-800",
+    modalActive: "bg-teal-600 text-white border-teal-600 shadow-sm",
+  },
+];
+
+function getCategoryTheme(categoryName: string): CategoryTheme {
+  const normalized = categoryName.trim();
+  if (normalized === "수중") return CATEGORY_THEMES[0];
+  if (normalized === "PT") return CATEGORY_THEMES[1];
+  if (normalized === "재활") return CATEGORY_THEMES[2];
+  if (normalized === "특수체육") return CATEGORY_THEMES[3];
+
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+  }
+  return CATEGORY_THEMES[hash % CATEGORY_THEMES.length];
+}
+
 // --- 초기 계정 및 테스트 데이터 ---
 const INITIAL_USERS: UserAccount[] = [
   { id: "admin-1", loginId: "admin", password: "1234", name: "총괄 관리자", role: "admin" },
@@ -1285,7 +1359,7 @@ export default function Home() {
           onClick={() => setActivePage("timetable")}
           className="text-lg font-bold text-slate-800 hover:text-blue-600 transition"
         >
-          사이언스 특수체육 수성센터
+          IEP 수업 & 학생 관리
         </button>
 
         <span
@@ -1636,7 +1710,6 @@ export default function Home() {
 
                           <p className="text-sm font-bold text-slate-800">{task.title}</p>
 
-                          {/* 선생님별 확인 완료 여부 한눈에 보기 */}
                           <div className="bg-white rounded-xl border border-slate-200/90 p-3 space-y-2">
                             <span className="text-[11px] font-bold text-slate-500 block">
                               선생님별 확인 상태
@@ -2225,6 +2298,8 @@ export default function Home() {
                                         );
                                       }
 
+                                      const catName = getCategoryName(slot.categoryId);
+                                      const theme = getCategoryTheme(catName);
                                       const sessionKey = `${historyWeekKey}_${slot.id}_${targetStudent.id}`;
                                       const rec = iepRecords[sessionKey];
                                       const att = attendanceRecords[sessionKey];
@@ -2243,9 +2318,9 @@ export default function Home() {
                                             onClick={() => setSelectedHistoryKey(sessionKey)}
                                             className={`w-full h-full rounded-lg p-1.5 text-left border transition flex flex-col justify-between ${
                                               isSelectedCell
-                                                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                                                ? "bg-slate-800 text-white border-slate-800 shadow-sm"
                                                 : hasData
-                                                ? "bg-blue-50 hover:bg-blue-100 border-blue-300 text-slate-800"
+                                                ? `${theme.card} text-slate-800`
                                                 : "bg-white hover:bg-slate-50 border-slate-200 text-slate-500"
                                             }`}
                                           >
@@ -2254,10 +2329,10 @@ export default function Home() {
                                                 className={`text-[10px] font-extrabold px-1 rounded ${
                                                   isSelectedCell
                                                     ? "bg-white/20 text-white"
-                                                    : "bg-blue-600 text-white"
+                                                    : theme.badge
                                                 }`}
                                               >
-                                                {getCategoryName(slot.categoryId)}
+                                                {catName}
                                               </span>
                                               {rec?.adminChecked && (
                                                 <span className="text-[10px]" title="관리자 확인됨">
@@ -2287,6 +2362,8 @@ export default function Home() {
                                 const exactDate = slot
                                   ? getExactDateFromMondayKey(mKey, slot.day)
                                   : mKey;
+                                const catName = slot ? getCategoryName(slot.categoryId) : "수업";
+                                const theme = getCategoryTheme(catName);
                                 const rec = iepRecords[selectedHistoryKey];
                                 const att = attendanceRecords[selectedHistoryKey];
 
@@ -2298,8 +2375,10 @@ export default function Home() {
                                           {exactDate} ({slot?.day}
                                           {slot?.period})
                                         </span>
-                                        <span className="text-sm font-bold text-slate-800">
-                                          {slot ? getCategoryName(slot.categoryId) : "수업"}
+                                        <span
+                                          className={`px-2.5 py-1 text-xs font-extrabold rounded-md border ${theme.pill}`}
+                                        >
+                                          {catName}
                                         </span>
                                         <span
                                           className={`px-2 py-0.5 text-xs font-bold rounded border ${getAttendanceBadgeStyle(
@@ -2399,6 +2478,7 @@ export default function Home() {
                           ) : (
                             studentHistoryList.map((item) => {
                               const isExpanded = activeDetailItem?.key === item.key;
+                              const theme = getCategoryTheme(item.categoryName);
 
                               return (
                                 <div
@@ -2419,7 +2499,15 @@ export default function Home() {
                                     <div className="flex flex-wrap items-center gap-2">
                                       <span className="text-base">{isExpanded ? "📂" : "📄"}</span>
                                       <span className="font-bold text-sm text-slate-800">
-                                        {item.exactDate} ({item.dayPeriod}) · {item.categoryName} IEP 일지
+                                        {item.exactDate} ({item.dayPeriod}) ·
+                                      </span>
+                                      <span
+                                        className={`px-2 py-0.5 text-xs font-extrabold rounded-md border ${theme.pill}`}
+                                      >
+                                        {item.categoryName}
+                                      </span>
+                                      <span className="font-bold text-sm text-slate-800">
+                                        IEP 일지
                                       </span>
                                       {item.attendance && (
                                         <span
@@ -2653,6 +2741,7 @@ export default function Home() {
         adminFeedbackDrafts[recordKey] !== undefined
           ? adminFeedbackDrafts[recordKey]
           : rec.adminFeedback || "";
+      const theme = getCategoryTheme(categoryName);
 
       return (
         <div
@@ -2668,7 +2757,9 @@ export default function Home() {
               <span className="px-2.5 py-1 bg-slate-800 text-white text-xs font-bold rounded-md">
                 {exactDate} ({dayPeriod})
               </span>
-              <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-xs font-extrabold rounded-md">
+              <span
+                className={`px-2.5 py-1 text-xs font-extrabold rounded-md border ${theme.pill}`}
+              >
                 {categoryName}
               </span>
               <span className="text-base font-bold text-slate-800">
@@ -3014,6 +3105,8 @@ export default function Home() {
                             );
                           }
 
+                          const catName = getCategoryName(slot.categoryId);
+                          const theme = getCategoryTheme(catName);
                           const targetIds =
                             reviewStudentFilterId === "all"
                               ? slot.studentIds
@@ -3047,19 +3140,17 @@ export default function Home() {
                                   isSelectedCell
                                     ? "bg-slate-800 text-white border-slate-800 shadow-sm"
                                     : writtenCount > 0
-                                    ? "bg-blue-50 hover:bg-blue-100 border-blue-300 text-slate-800"
+                                    ? `${theme.card} text-slate-800`
                                     : "bg-white hover:bg-slate-50 border-slate-200 text-slate-500"
                                 }`}
                               >
                                 <div className="flex items-center justify-between gap-1">
                                   <span
                                     className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
-                                      isSelectedCell
-                                        ? "bg-blue-500 text-white"
-                                        : "bg-blue-600 text-white"
+                                      isSelectedCell ? "bg-white/20 text-white" : theme.badge
                                     }`}
                                   >
-                                    {getCategoryName(slot.categoryId)}
+                                    {catName}
                                   </span>
                                   {writtenCount > 0 && checkedCount === writtenCount && (
                                     <span className="text-[11px]" title="모두 관리자 확인 완료">
@@ -3084,7 +3175,7 @@ export default function Home() {
                                       isSelectedCell
                                         ? "text-amber-300"
                                         : writtenCount > 0
-                                        ? "text-indigo-700"
+                                        ? "text-slate-700"
                                         : "text-slate-400"
                                     }`}
                                   >
@@ -3193,6 +3284,7 @@ export default function Home() {
               ) : (
                 teacherIepList.map((item) => {
                   const isExpanded = selectedReviewFileKey === item.key;
+                  const theme = getCategoryTheme(item.categoryName);
 
                   return (
                     <div
@@ -3213,8 +3305,15 @@ export default function Home() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-base">{isExpanded ? "📂" : "📄"}</span>
                           <span className="font-bold text-sm text-slate-800">
-                            {item.exactDate} ({item.dayPeriod}) · {item.categoryName} ·{" "}
-                            <span className="text-indigo-700">{item.student?.name}</span> IEP 일지
+                            {item.exactDate} ({item.dayPeriod}) ·
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 text-xs font-extrabold rounded-md border ${theme.pill}`}
+                          >
+                            {item.categoryName}
+                          </span>
+                          <span className="font-bold text-sm text-slate-800">
+                            · <span className="text-indigo-700">{item.student?.name}</span> IEP 일지
                           </span>
                           {item.attendance && (
                             <span
@@ -3628,6 +3727,7 @@ export default function Home() {
                 {categories.map((cat) => {
                   const usedCount = timetable.filter((s) => s.categoryId === cat.id).length;
                   const isEditing = editingCategoryId === cat.id;
+                  const theme = getCategoryTheme(cat.name);
 
                   return (
                     <div
@@ -3661,7 +3761,9 @@ export default function Home() {
                       ) : (
                         <>
                           <div className="flex items-center gap-2.5">
-                            <span className="px-3 py-1 rounded-lg bg-blue-100 text-blue-800 text-sm font-extrabold">
+                            <span
+                              className={`px-3 py-1 rounded-lg border text-sm font-extrabold ${theme.pill}`}
+                            >
                               {cat.name}
                             </span>
                             <span className="text-xs text-slate-500">
@@ -3881,6 +3983,7 @@ export default function Home() {
 
     const exactClassDate = getExactDateFromMondayKey(weekKey, selectedSlot.day);
     const categoryName = getCategoryName(selectedSlot.categoryId);
+    const categoryTheme = getCategoryTheme(categoryName);
     const slotStudents = students.filter((s) => selectedSlot.studentIds.includes(s.id));
     const selectedStudent =
       slotStudents.find((s) => s.id === selectedStudentId) || slotStudents[0];
@@ -3968,10 +4071,12 @@ export default function Home() {
               >
                 ← 시간표
               </button>
-              <span className="px-2.5 py-1 bg-blue-600 text-white text-xs font-extrabold rounded-md">
+              <span className="px-2.5 py-1 bg-slate-800 text-white text-xs font-extrabold rounded-md">
                 {exactClassDate} ({selectedSlot.day}{selectedSlot.period})
               </span>
-              <span className="px-2.5 py-1 bg-indigo-100 text-indigo-800 text-xs font-extrabold rounded-md">
+              <span
+                className={`px-2.5 py-1 text-xs font-extrabold rounded-md border ${categoryTheme.pill}`}
+              >
                 {categoryName}
               </span>
               {selectedSlot.detailTitle && (
@@ -4404,10 +4509,17 @@ export default function Home() {
               {iepIndexTab === "today" && (
                 <form onSubmit={handleSaveIEP} className="p-6 space-y-5">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h4 className="text-base font-bold text-slate-800">
-                        ✏️ {exactClassDate} ({selectedSlot.day}{selectedSlot.period} ·{" "}
-                        {categoryName}) · {selectedStudent.name} IEP 작성
+                        ✏️ {exactClassDate} ({selectedSlot.day}{selectedSlot.period} ·
+                      </h4>
+                      <span
+                        className={`px-2.5 py-0.5 text-xs font-extrabold rounded-md border ${categoryTheme.pill}`}
+                      >
+                        {categoryName}
+                      </span>
+                      <h4 className="text-base font-bold text-slate-800">
+                        ) · {selectedStudent.name} IEP 작성
                       </h4>
                       <span
                         className={`px-2.5 py-0.5 text-xs font-extrabold rounded-md border ${getAttendanceBadgeStyle(
@@ -4637,15 +4749,32 @@ export default function Home() {
 
         <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-100">
-            <div>
-              <h2 className="text-lg font-bold text-slate-800">
-                🗓️ {activeTeacher?.name} 주간 수업 시간표
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {currentUser.role === "admin"
-                  ? "수업 칸을 클릭하면 수업 상세 화면으로 이동하고, 우측 상단 [편집]으로 배정을 수정합니다."
-                  : "수업 칸(예: 월1)을 클릭하면 출결 체크 및 책 인덱스형 IEP 작성 페이지로 이동합니다."}
-              </p>
+            <div className="space-y-2">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">
+                  🗓️ {activeTeacher?.name} 주간 수업 시간표
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {currentUser.role === "admin"
+                    ? "수업 칸을 클릭하면 수업 상세 화면으로 이동하고, 우측 상단 [편집]으로 배정을 수정합니다."
+                    : "수업 칸(예: 월1)을 클릭하면 출결 체크 및 책 인덱스형 IEP 작성 페이지로 이동합니다."}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-bold text-slate-400 mr-0.5">수업 색상 범례:</span>
+                {categories.map((cat) => {
+                  const theme = getCategoryTheme(cat.name);
+                  return (
+                    <span
+                      key={cat.id}
+                      className={`px-2 py-0.5 rounded-md border text-[11px] font-extrabold ${theme.pill}`}
+                    >
+                      {cat.name}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
@@ -4706,20 +4835,27 @@ export default function Home() {
                         (s) => s.day === day && s.period === period
                       );
                       const catName = slot ? getCategoryName(slot.categoryId) : "";
+                      const theme = slot ? getCategoryTheme(catName) : null;
 
                       return (
                         <td
                           key={`${day}-${period}`}
                           className="p-1.5 border border-slate-200 h-26 align-top"
                         >
-                          {slot ? (
-                            <div className="w-full h-full rounded-xl bg-blue-50/80 hover:bg-blue-100/90 border border-blue-200 p-2 flex flex-col justify-between transition group relative">
+                          {slot && theme ? (
+                            <div
+                              className={`w-full h-full rounded-xl border p-2 flex flex-col justify-between transition group relative ${theme.card}`}
+                            >
                               <div className="flex items-center justify-between gap-1">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-blue-600 text-white">
+                                <div className="flex items-center gap-1 min-w-0">
+                                  <span
+                                    className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded shrink-0 ${theme.badge}`}
+                                  >
                                     {day}{period}
                                   </span>
-                                  <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">
+                                  <span
+                                    className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border truncate ${theme.pill}`}
+                                  >
                                     {catName}
                                   </span>
                                 </div>
@@ -4731,12 +4867,12 @@ export default function Home() {
                                       e.stopPropagation();
                                       handleOpenAdminModal(day, period, slot);
                                     }}
-                                    className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-white hover:bg-slate-700"
+                                    className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-white hover:bg-slate-700 shrink-0"
                                   >
                                     편집
                                   </button>
                                 ) : (
-                                  <span className="text-[10px] font-semibold text-slate-500">
+                                  <span className="text-[10px] font-semibold text-slate-600 shrink-0">
                                     {slot.studentIds.length}명
                                   </span>
                                 )}
@@ -4747,10 +4883,12 @@ export default function Home() {
                                 onClick={() => handleOpenSlotDetail(slot)}
                                 className="text-left w-full flex-1 flex flex-col justify-end mt-1.5"
                               >
-                                <div className="text-xs font-bold text-slate-800 leading-snug line-clamp-1 group-hover:text-blue-700">
+                                <div
+                                  className={`text-xs font-bold text-slate-800 leading-snug line-clamp-1 transition ${theme.titleHover}`}
+                                >
                                   {slot.detailTitle || catName}
                                 </div>
-                                <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                                <div className="text-[11px] text-slate-600 truncate mt-0.5">
                                   {slot.studentIds
                                     .map(
                                       (id) =>
@@ -4826,6 +4964,7 @@ export default function Home() {
                 <div className="flex flex-wrap gap-2">
                   {categories.map((cat) => {
                     const isSelected = modalCategoryId === cat.id;
+                    const theme = getCategoryTheme(cat.name);
                     return (
                       <button
                         type="button"
@@ -4833,10 +4972,11 @@ export default function Home() {
                         onClick={() => setModalCategoryId(cat.id)}
                         className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition ${
                           isSelected
-                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                            : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                            ? theme.modalActive
+                            : `${theme.pill} opacity-85 hover:opacity-100`
                         }`}
                       >
+                        {isSelected ? "✓ " : ""}
                         {cat.name}
                       </button>
                     );
