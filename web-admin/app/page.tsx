@@ -1036,7 +1036,7 @@ export default function Home() {
               </span>
             </div>
             <div className="flex justify-between bg-slate-50 px-3 py-1.5 rounded-lg">
-              <span>관리자 (시간표·학생·선생님IEP검토)</span>
+              <span>관리자</span>
               <span className="font-mono font-bold text-slate-700">admin / 1234</span>
             </div>
             {teachersOnly.map((t) => (
