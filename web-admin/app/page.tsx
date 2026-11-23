@@ -977,7 +977,7 @@ export default function Home() {
             <span className="inline-block px-3 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full mb-2">
               특수체육 · 재활 · 개별화 교육 관리 시스템
             </span>
-            <h1 className="text-2xl font-bold text-slate-800">IEP 통합 관리 포털</h1>
+            <h1 className="text-2xl font-bold text-slate-800">사이언스 특수체육센터</h1>
             <p className="text-sm text-slate-500 mt-1">
               발급받은 관리자 또는 선생님 아이디와 비밀번호를 입력하세요.
             </p>
