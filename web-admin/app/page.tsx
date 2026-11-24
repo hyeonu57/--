@@ -24,32 +24,33 @@ type ColorKey =
 const DAYS: DayOfWeek[] = ["월", "화", "수", "목", "금", "토"];
 const PERIODS = [1, 2, 3, 4, 5, 6, 7];
 
-// localStorage & sessionStorage 저장 키 상수
 const STORAGE_KEYS = {
-  USERS: "iep_portal_users_v1",
-  STUDENTS: "iep_portal_students_v1",
-  CATEGORIES: "iep_portal_categories_v1",
-  TIMETABLE: "iep_portal_timetable_v1",
-  IEP_RECORDS: "iep_portal_iep_records_v1",
-  ATTENDANCE: "iep_portal_attendance_v1",
-  WEEKLY_TASKS: "iep_portal_weekly_tasks_v1",
-  SESSION_USER: "iep_portal_session_user_v1",
-  SESSION_PAGE: "iep_portal_session_page_v1",
+  USERS: "iep_portal_users_v2",
+  STUDENTS: "iep_portal_students_v2",
+  CATEGORIES: "iep_portal_categories_v2",
+  TIMETABLE: "iep_portal_timetable_v2",
+  IEP_RECORDS: "iep_portal_iep_records_v2",
+  ATTENDANCE: "iep_portal_attendance_v2",
+  WEEKLY_TASKS: "iep_portal_weekly_tasks_v2",
+  MAKEUP_NOTIFICATIONS: "iep_portal_makeup_notifications_v2",
+  SESSION_USER: "iep_portal_session_user_v2",
+  SESSION_PAGE: "iep_portal_session_page_v2",
 };
 
-// 자주 쓰는 IEP 문구 템플릿
-const ACTIVITY_TEMPLATES: { label: string; text: string }[] = [
-  {
-    label: "기본 루틴(준비·본·정리)",
-    text: "1) 준비운동: 관절 가동성 및 스트레칭 (5분)\n2) 본 활동: \n3) 정리운동: 호흡 조절 및 오늘 활동 소감 나누기 (5분)",
-  },
+// 기본 루틴(상/하) 및 중(본시수업) 개별 템플릿 상수
+const BASIC_ROUTINE_TOP =
+  "관절 가동성 및 가벼운 스트레칭(5분) 진행, 오늘 활동 순서 안내 및 동기유발";
+const BASIC_ROUTINE_BOTTOM =
+  "호흡 조절 및 전신 이완 스트레칭(5분), 오늘 활동 소감 나누기 및 긍정 피드백";
+
+const MIDDLE_ACTIVITY_TEMPLATES: { label: string; text: string }[] = [
   {
     label: "균형·협응 순환 활동",
-    text: "1) 준비운동: 가벼운 제자리 걷기 및 몸풀기\n2) 본 활동: 평균대 보행 → 콘 터치 → 표적 던지기 순환 코스(3회 반복)\n3) 정리운동: 매트 스트레칭 및 이완",
+    text: "평균대 보행 → 콘 터치 → 표적 던지기 순환 코스(3회 반복)",
   },
   {
     label: "수중 적응·부력 활동",
-    text: "1) 풀사이드 스트레칭 및 입수 전 호흡 안내\n2) 본 활동: 수중 걷기, 발차기 및 부력 기구 활용 균형 유지\n3) 정리운동: 온수 샤워 및 컨디션 확인",
+    text: "입수 후 호흡 연습, 수중 걷기 및 발차기, 부력 기구 활용 균형 유지",
   },
 ];
 
@@ -79,7 +80,7 @@ interface UserAccount {
 interface Student {
   id: string;
   name: string;
-  birthDate: string; // YYYY-MM-DD
+  birthDate: string;
   schoolGradeClass?: string;
   initialConsultInfo: string;
   currentStatusInfo: string;
@@ -101,11 +102,17 @@ interface TimetableSlot {
   categoryId: string;
   detailTitle?: string;
   studentIds: string[];
+  isMakeupSlot?: boolean;
+  makeupForDate?: string;
+  makeupWeekKey?: string;
 }
 
 interface IEPRecord {
   sessionGoal: string;
-  activityContent: string;
+  activityTop?: string; // 상 - 준비운동 및 동기유발
+  activityMiddle?: string; // 중 - 본시수업
+  activityBottom?: string; // 하 - 마무리 운동 및 금일 피드백
+  activityContent: string; // 전체 조합 텍스트(하위 호환 및 누적 조회용)
   supportStrategy: string;
   evaluation: string;
   progressStatus?: GoalProgressStatus;
@@ -113,6 +120,21 @@ interface IEPRecord {
   adminChecked?: boolean;
   adminFeedback?: string;
   adminCheckedAt?: string;
+}
+
+interface MakeupNotification {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  studentId: string;
+  studentName: string;
+  categoryName: string;
+  originalDate: string;
+  makeupDate: string;
+  makeupDay: DayOfWeek;
+  makeupPeriod: number;
+  createdAt: string;
+  acknowledgedByAdmin: boolean;
 }
 
 interface WeeklyTask {
@@ -138,7 +160,6 @@ interface CategoryTheme {
   modalActive: string;
 }
 
-// --- 검정·흰색 제외한 10가지 색상 팔레트 ---
 const COLOR_PALETTE: CategoryTheme[] = [
   {
     key: "cyan",
@@ -260,7 +281,37 @@ function getThemeByColorKey(colorKey?: ColorKey, fallbackSeed = ""): CategoryThe
   return COLOR_PALETTE[hash % COLOR_PALETTE.length];
 }
 
-// --- 초기 계정 및 테스트 데이터 ---
+function buildCombinedActivityText(top?: string, middle?: string, bottom?: string): string {
+  const parts: string[] = [];
+  if (top?.trim()) parts.push(`[상 - 준비운동 및 동기유발]\n${top.trim()}`);
+  if (middle?.trim()) parts.push(`[중 - 본시수업]\n${middle.trim()}`);
+  if (bottom?.trim()) parts.push(`[하 - 마무리 운동 및 금일 피드백]\n${bottom.trim()}`);
+  return parts.join("\n\n");
+}
+
+function parseActivitySections(rec: IEPRecord): {
+  top: string;
+  middle: string;
+  bottom: string;
+} {
+  if (
+    rec.activityTop !== undefined ||
+    rec.activityMiddle !== undefined ||
+    rec.activityBottom !== undefined
+  ) {
+    return {
+      top: rec.activityTop || "",
+      middle: rec.activityMiddle || "",
+      bottom: rec.activityBottom || "",
+    };
+  }
+  return {
+    top: "",
+    middle: rec.activityContent || "",
+    bottom: "",
+  };
+}
+
 const INITIAL_USERS: UserAccount[] = [
   { id: "admin-1", loginId: "admin", password: "1234", name: "총괄 관리자", role: "admin" },
   { id: "t-1", loginId: "teacher1", password: "1234", name: "정현우 선생님", role: "teacher" },
@@ -376,7 +427,6 @@ const INITIAL_TIMETABLE: TimetableSlot[] = [
   },
 ];
 
-// --- 생년월일 기준 만 나이 자동 계산 ---
 function calculateAge(birthDateStr: string): number | null {
   if (!birthDateStr) return null;
   const birth = new Date(birthDateStr);
@@ -391,7 +441,6 @@ function calculateAge(birthDateStr: string): number | null {
   return age >= 0 ? age : 0;
 }
 
-// --- 실제 달력 날짜 계산 유틸리티 ---
 function getMonday(date: Date): Date {
   const d = new Date(date);
   const day = d.getDay();
@@ -406,6 +455,20 @@ function formatDateKey(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function parseDateStringToLocal(dateStr: string): Date | null {
+  const parts = dateStr.split("-").map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+  return new Date(parts[0], parts[1] - 1, parts[2]);
+}
+
+function getDayOfWeekFromDateString(dateStr: string): DayOfWeek {
+  const d = parseDateStringToLocal(dateStr);
+  if (!d) return "토";
+  const jsDay = d.getDay(); // 0:일, 1:월 ... 6:토
+  if (jsDay === 0) return "토";
+  return DAYS[jsDay - 1] || "토";
 }
 
 function formatShortDate(monday: Date, offsetDays: number): string {
@@ -434,11 +497,7 @@ function getWeekLabelByMonday(monday: Date): string {
 }
 
 function getWeekInfoFromDateString(dateStr: string) {
-  const parts = dateStr.split("-").map(Number);
-  const parsed =
-    parts.length === 3 && !parts.some(Number.isNaN)
-      ? new Date(parts[0], parts[1] - 1, parts[2])
-      : new Date();
+  const parsed = parseDateStringToLocal(dateStr) || new Date();
   const mon = getMonday(parsed);
   return {
     weekLabel: getWeekLabelByMonday(mon),
@@ -446,7 +505,6 @@ function getWeekInfoFromDateString(dateStr: string) {
   };
 }
 
-// --- 주간 업무 대상 선생님 및 확인 상태 헬퍼 ---
 function getTargetTeachersForTask(
   task: Pick<WeeklyTask, "assignee">,
   teachers: UserAccount[]
@@ -500,7 +558,7 @@ function createDefaultWeeklyTasks(baseMonday: Date): WeeklyTask[] {
       weekStartDate: formatDateKey(baseMonday),
       title: "주간 IEP 상담 일지 및 목표 진전도 점검",
       detail:
-        "1. 담당 학생별 금주 수업 활동 내용 및 아이의 반응을 기록해 주세요.\n2. 목표 달성 진전도(달성 완료 / 진행 중 / 지원 필요)를 선택해 주세요.\n3. 금요일 수업 종료 전까지 작성을 완료해 주시기 바랍니다.",
+        "1. 담당 학생별 금주 수업 활동 내용(상·중·하) 및 아이의 반응을 기록해 주세요.\n2. 목표 달성 진전도(달성 완료 / 진행 중 / 지원 필요)를 선택해 주세요.\n3. 금요일 수업 종료 전까지 작성을 완료해 주시기 바랍니다.",
       assignee: "전체 선생님",
       createdAt: formatDateKey(new Date()),
       checkedByTeacher: false,
@@ -509,7 +567,6 @@ function createDefaultWeeklyTasks(baseMonday: Date): WeeklyTask[] {
   ];
 }
 
-// --- 출결 및 목표 달성도 배지 스타일 헬퍼 ---
 function getAttendanceBadgeStyle(status?: AttendanceStatus) {
   if (status === "출석") return "bg-emerald-100 text-emerald-800 border-emerald-200";
   if (status === "결석") return "bg-rose-100 text-rose-800 border-rose-200";
@@ -531,7 +588,6 @@ function getProgressEmoji(status?: GoalProgressStatus) {
   return "•";
 }
 
-// --- 초기 샘플 IEP/출결 생성 함수 ---
 function createDefaultIEPRecords(): Record<string, IEPRecord> {
   const thisMon = getMonday(new Date());
   const lastMon = new Date(thisMon);
@@ -540,11 +596,17 @@ function createDefaultIEPRecords(): Record<string, IEPRecord> {
   const thisMonKey = formatDateKey(thisMon);
   const lastMonKey = formatDateKey(lastMon);
 
+  const top1 = "발목 및 고관절 스트레칭 5분, 오늘 보행 과제 시범 및 동기유발";
+  const mid1 = "높이 5cm 평균대 위 발자국 스티커를 따라 앞·뒤로 걷기 및 반환점 색깔 콘 터치";
+  const bot1 = "호흡 가다듬기 및 매트 이완 스트레칭, 오늘 활동 소감 나누기";
+
   return {
     [`${lastMonKey}_slot-1_st-1`]: {
       sessionGoal: "낮은 평균대(높이 5cm) 위에서 양팔을 벌리고 흔들림 없이 3m 보행하기",
-      activityContent:
-        "1) 준비운동: 발목 및 고관절 스트레칭 5분\n2) 본 활동: 높이 5cm 평균대 위 발자국 스티커를 따라 앞·뒤로 걷기 및 반환점 색깔 콘 터치하기\n3) 정리운동: 호흡 가다듬기 및 소감 나누기",
+      activityTop: top1,
+      activityMiddle: mid1,
+      activityBottom: bot1,
+      activityContent: buildCombinedActivityText(top1, mid1, bot1),
       supportStrategy:
         "시각적 발자국 스티커 부착으로 보폭 가이드 제공, 출발 전 1회 시범 후 언어적 격려 위주 최소 촉진",
       evaluation:
@@ -559,8 +621,14 @@ function createDefaultIEPRecords(): Record<string, IEPRecord> {
     },
     [`${thisMonKey}_slot-1_st-1`]: {
       sessionGoal: "높이 10cm 평균대 중간 지점에서 정지 후 5초간 균형 유지하기",
-      activityContent:
-        "낮은 평균대 워킹 워밍업 후 10cm 평균대 중앙 색깔 표식에서 양팔을 벌리고 5초 정지 균형 훈련 진행",
+      activityTop: BASIC_ROUTINE_TOP,
+      activityMiddle: "10cm 평균대 중앙 색깔 표식에서 양팔을 벌리고 5초 정지 균형 훈련 진행",
+      activityBottom: BASIC_ROUTINE_BOTTOM,
+      activityContent: buildCombinedActivityText(
+        BASIC_ROUTINE_TOP,
+        "10cm 평균대 중앙 색깔 표식에서 양팔을 벌리고 5초 정지 균형 훈련 진행",
+        BASIC_ROUTINE_BOTTOM
+      ),
       supportStrategy:
         "교사가 정면에서 손바닥 시각 신호로 정지 타이밍 안내 및 5초 카운트 시각 타이머 활용",
       evaluation:
@@ -595,6 +663,7 @@ export default function Home() {
   const [iepRecords, setIepRecords] = useState<Record<string, IEPRecord>>({});
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, AttendanceStatus>>({});
   const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTask[]>([]);
+  const [makeupNotifications, setMakeupNotifications] = useState<MakeupNotification[]>([]);
 
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [loginIdInput, setLoginIdInput] = useState<string>("");
@@ -620,6 +689,16 @@ export default function Home() {
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [iepIndexTab, setIepIndexTab] = useState<IepBookTab>("today");
+
+  // [보강 날짜 선택 팝업 상태]
+  const [makeupModalData, setMakeupModalData] = useState<{
+    student: Student;
+    slot: TimetableSlot;
+    originalDate: string;
+  } | null>(null);
+  const [makeupDateInput, setMakeupDateInput] = useState<string>("");
+  const [makeupPeriodInput, setMakeupPeriodInput] = useState<number>(1);
+  const [makeupDetailInput, setMakeupDetailInput] = useState<string>("");
 
   const [historyStudentId, setHistoryStudentId] = useState<string>("");
   const [historyViewMode, setHistoryViewMode] = useState<"timetable" | "files">("timetable");
@@ -699,6 +778,7 @@ export default function Home() {
       const savedIepRecords = localStorage.getItem(STORAGE_KEYS.IEP_RECORDS);
       const savedAttendance = localStorage.getItem(STORAGE_KEYS.ATTENDANCE);
       const savedWeeklyTasks = localStorage.getItem(STORAGE_KEYS.WEEKLY_TASKS);
+      const savedMakeupNotis = localStorage.getItem(STORAGE_KEYS.MAKEUP_NOTIFICATIONS);
 
       const parsedUsers: UserAccount[] = savedUsers ? JSON.parse(savedUsers) : INITIAL_USERS;
       const parsedTeachers = parsedUsers.filter((u) => u.role === "teacher");
@@ -739,6 +819,10 @@ export default function Home() {
         setWeeklyTasks(parsedTasks.map((t) => normalizeWeeklyTask(t, parsedTeachers)));
       } else {
         setWeeklyTasks(createDefaultWeeklyTasks(todayMon));
+      }
+
+      if (savedMakeupNotis) {
+        setMakeupNotifications(JSON.parse(savedMakeupNotis));
       }
 
       const savedSessionUser = sessionStorage.getItem(STORAGE_KEYS.SESSION_USER);
@@ -830,6 +914,14 @@ export default function Home() {
   }, [weeklyTasks, isStorageLoaded]);
 
   useEffect(() => {
+    if (!isStorageLoaded) return;
+    localStorage.setItem(
+      STORAGE_KEYS.MAKEUP_NOTIFICATIONS,
+      JSON.stringify(makeupNotifications)
+    );
+  }, [makeupNotifications, isStorageLoaded]);
+
+  useEffect(() => {
     if (!isStorageLoaded || !currentUser) return;
     sessionStorage.setItem(STORAGE_KEYS.SESSION_PAGE, activePage);
   }, [activePage, currentUser, isStorageLoaded]);
@@ -837,7 +929,7 @@ export default function Home() {
   const handleExportBackupJson = () => {
     const backupPayload = {
       exportedAt: new Date().toISOString(),
-      version: "1.0",
+      version: "2.0",
       users,
       students,
       categories,
@@ -845,6 +937,7 @@ export default function Home() {
       iepRecords,
       attendanceRecords,
       weeklyTasks,
+      makeupNotifications,
     };
 
     const blob = new Blob([JSON.stringify(backupPayload, null, 2)], {
@@ -885,6 +978,9 @@ export default function Home() {
             )
           );
         }
+        if (parsed.makeupNotifications) {
+          setMakeupNotifications(parsed.makeupNotifications);
+        }
 
         alert("✅ 백업 파일에서 모든 데이터가 성공적으로 복원되었습니다!");
       } catch {
@@ -900,7 +996,24 @@ export default function Home() {
   const activeTeacherId =
     currentUser?.role === "admin" ? adminTargetTeacherId : currentUser?.id || "";
   const activeTeacher = teachersOnly.find((t) => t.id === activeTeacherId) || teachersOnly[0];
-  const visibleTimetable = timetable.filter((slot) => slot.teacherId === activeTeacher?.id);
+
+  const weekKey = formatDateKey(currentMonday);
+  const weekRangeLabel = `${currentMonday.getFullYear()}년 ${formatShortDate(
+    currentMonday,
+    0
+  )} (월) ~ ${formatShortDate(currentMonday, 5)} (토)`;
+
+  // 해당 주차에 유효한 시간표 칸 (보강 슬롯은 지정된 주차에만 노출)
+  const isSlotActiveInWeek = (slot: TimetableSlot, targetWeekKey: string) => {
+    if (!slot.isMakeupSlot) return true;
+    return slot.makeupWeekKey === targetWeekKey;
+  };
+
+  const visibleTimetable = timetable.filter(
+    (slot) => slot.teacherId === activeTeacher?.id && isSlotActiveInWeek(slot, weekKey)
+  );
+
+  const unacknowledgedMakeupList = makeupNotifications.filter((n) => !n.acknowledgedByAdmin);
 
   const totalUncheckedIepCount = Object.values(iepRecords).filter((rec) => {
     const hasContent = Boolean(
@@ -928,12 +1041,6 @@ export default function Home() {
     return students.filter((st) => assignedIds.has(st.id));
   };
 
-  const weekKey = formatDateKey(currentMonday);
-  const weekRangeLabel = `${currentMonday.getFullYear()}년 ${formatShortDate(
-    currentMonday,
-    0
-  )} (월) ~ ${formatShortDate(currentMonday, 5)} (토)`;
-
   const getCategoryById = (catId: string) => categories.find((c) => c.id === catId);
   const getCategoryName = (catId: string) => getCategoryById(catId)?.name || "미지정";
   const getCategoryTheme = (catIdOrName: string): CategoryTheme => {
@@ -948,7 +1055,6 @@ export default function Home() {
     return getThemeByColorKey(undefined, catIdOrName);
   };
 
-  // [2번] 출결 통계 + 미보강 잔여 횟수 계산
   const getStudentAttendanceStats = (studentId: string) => {
     let present = 0;
     let absent = 0;
@@ -966,16 +1072,21 @@ export default function Home() {
     return { present, absent, makeup, pendingMakeup, total: present + absent + makeup };
   };
 
-  // [4번] 관리자 주간 요약 대시보드 지표 계산
-  const adminWeeklySummary = (() => {
-    const totalSlots = timetable.length;
+  // [관리자 모드] 선택된 선생님 기준 주간 요약 대시보드 지표 계산
+  const selectedTeacherSummary = (() => {
+    const targetTeacherId = activeTeacher?.id || "";
+    const teacherWeekSlots = timetable.filter(
+      (s) => s.teacherId === targetTeacherId && isSlotActiveInWeek(s, weekKey)
+    );
+    const totalSlots = teacherWeekSlots.length;
     let totalStudentSessions = 0;
     let completedIepCount = 0;
+    let uncheckedIepForTeacher = 0;
     let weekPresent = 0;
     let weekAbsent = 0;
     let weekMakeup = 0;
 
-    timetable.forEach((slot) => {
+    teacherWeekSlots.forEach((slot) => {
       slot.studentIds.forEach((stId) => {
         totalStudentSessions++;
         const k = `${weekKey}_${slot.id}_${stId}`;
@@ -986,7 +1097,10 @@ export default function Home() {
             rec?.supportStrategy.trim() ||
             rec?.evaluation.trim()
         );
-        if (hasContent) completedIepCount++;
+        if (hasContent) {
+          completedIepCount++;
+          if (!rec?.adminChecked) uncheckedIepForTeacher++;
+        }
 
         const att = attendanceRecords[k];
         if (att === "출석") weekPresent++;
@@ -1000,9 +1114,10 @@ export default function Home() {
         ? Math.round((completedIepCount / totalStudentSessions) * 100)
         : 0;
 
-    const uncheckedTasksAll = weeklyTasks.filter((task) => {
+    const uncheckedTasksForTeacher = weeklyTasks.filter((task) => {
       const targets = getTargetTeachersForTask(task, teachersOnly);
-      return targets.some((t) => !isTaskCheckedByTeacher(task, t.id));
+      const isTarget = targets.some((t) => t.id === targetTeacherId);
+      return isTarget && !isTaskCheckedByTeacher(task, targetTeacherId);
     }).length;
 
     return {
@@ -1010,10 +1125,11 @@ export default function Home() {
       totalStudentSessions,
       completedIepCount,
       completionRate,
+      uncheckedIepForTeacher,
       weekPresent,
       weekAbsent,
       weekMakeup,
-      uncheckedTasksAll,
+      uncheckedTasksForTeacher,
     };
   })();
 
@@ -1046,6 +1162,92 @@ export default function Home() {
       .sort((a, b) => b.exactDate.localeCompare(a.exactDate));
 
     return pastSessions[0] || null;
+  };
+
+  // [보강 날짜 선택 팝업 열기 & 확정]
+  const openMakeupPopup = (
+    student: Student,
+    slot: TimetableSlot,
+    originalDate: string
+  ) => {
+    const baseDate = parseDateStringToLocal(originalDate) || new Date();
+    const suggested = new Date(baseDate);
+    suggested.setDate(baseDate.getDate() + 3);
+    setMakeupDateInput(formatDateKey(suggested));
+    setMakeupPeriodInput(slot.period);
+    setMakeupDetailInput(slot.detailTitle ? `${slot.detailTitle} (보강)` : `${student.name} 보강 수업`);
+    setMakeupModalData({ student, slot, originalDate });
+  };
+
+  const handleConfirmMakeupSchedule = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!makeupModalData || !makeupDateInput) return;
+
+    const { student, slot, originalDate } = makeupModalData;
+    const parsedMakeupDate = parseDateStringToLocal(makeupDateInput);
+    if (!parsedMakeupDate) return;
+
+    const makeupDay = getDayOfWeekFromDateString(makeupDateInput);
+    const makeupMonday = getMonday(parsedMakeupDate);
+    const makeupWeekKey = formatDateKey(makeupMonday);
+
+    // 1. 기존 수업 칸 출결을 '보강'으로 표시
+    const originRecordKey = `${weekKey}_${slot.id}_${student.id}`;
+    setAttendanceRecords((prev) => ({
+      ...prev,
+      [originRecordKey]: "보강",
+    }));
+
+    // 2. 보강 날짜 주간 시간표에 보강 수업 슬롯 추가
+    const makeupSlotId = `makeup-${Date.now()}`;
+    const newMakeupSlot: TimetableSlot = {
+      id: makeupSlotId,
+      teacherId: slot.teacherId,
+      day: makeupDay,
+      period: makeupPeriodInput,
+      categoryId: slot.categoryId,
+      detailTitle: makeupDetailInput.trim() || `${student.name} 보강`,
+      studentIds: [student.id],
+      isMakeupSlot: true,
+      makeupForDate: originalDate,
+      makeupWeekKey,
+    };
+
+    setTimetable((prev) => [...prev, newMakeupSlot]);
+    setAttendanceRecords((prev) => ({
+      ...prev,
+      [`${makeupWeekKey}_${makeupSlotId}_${student.id}`]: "보강",
+    }));
+
+    // 3. 관리자 알림 등록
+    const teacherObj = teachersOnly.find((t) => t.id === slot.teacherId);
+    const newNoti: MakeupNotification = {
+      id: `mnoti-${Date.now()}`,
+      teacherId: slot.teacherId,
+      teacherName: teacherObj?.name || currentUser?.name || "담당 교사",
+      studentId: student.id,
+      studentName: student.name,
+      categoryName: getCategoryName(slot.categoryId),
+      originalDate,
+      makeupDate: makeupDateInput,
+      makeupDay,
+      makeupPeriod: makeupPeriodInput,
+      createdAt: formatDateKey(new Date()),
+      acknowledgedByAdmin: false,
+    };
+
+    setMakeupNotifications((prev) => [newNoti, ...prev]);
+    setMakeupModalData(null);
+    setSaveMessage(
+      `✅ ${student.name} 보강(${makeupDateInput} ${makeupDay}${makeupPeriodInput})이 시간표와 관리자에게 반영되었습니다.`
+    );
+    setTimeout(() => setSaveMessage(""), 4500);
+  };
+
+  const handleAcknowledgeMakeupNotification = (notiId: string) => {
+    setMakeupNotifications((prev) =>
+      prev.map((n) => (n.id === notiId ? { ...n, acknowledgedByAdmin: true } : n))
+    );
   };
 
   const handleAddWeeklyTask = (e: React.FormEvent) => {
@@ -1539,7 +1741,7 @@ export default function Home() {
 
           <div className="mt-6 pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-1.5">
             <div className="flex items-center justify-between">
-              <p className="font-bold text-slate-600">💡 계정 및 저장 안내:</p>
+              <p className="font-bold text-slate-600">💡 계정 안내:</p>
             </div>
             <div className="flex justify-between bg-slate-50 px-3 py-1.5 rounded-lg">
               <span>관리자</span>
@@ -1685,6 +1887,11 @@ export default function Home() {
       <div className="flex items-center gap-2">
         {currentUser.role === "admin" && (
           <div className="flex items-center gap-1.5 mr-1">
+            {unacknowledgedMakeupList.length > 0 && (
+              <span className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-extrabold rounded-full">
+                🔔 보강 알림 {unacknowledgedMakeupList.length}건
+              </span>
+            )}
             <button
               type="button"
               onClick={handleExportBackupJson}
@@ -1757,11 +1964,6 @@ export default function Home() {
                   ? "📌 관리자 주간 업무 지시 및 선생님별 확인 현황"
                   : `📌 ${currentUser.name} 주간 업무 안내`}
               </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                {currentUser.role === "admin"
-                  ? "달력에서 기준 날짜를 선택하면 해당 주간의 주차가 자동 계산되어 선생님 화면에 반영됩니다."
-                  : "목록에서는 핵심 요약만 보시고, 업무 항목을 클릭하면 팝업 창이 열려 상세 내용을 편하게 읽을 수 있습니다."}
-              </p>
             </div>
             {weeklyTaskMessage && (
               <span className="text-xs font-bold px-3.5 py-2 rounded-xl bg-slate-800 text-white shadow-sm">
@@ -1787,7 +1989,7 @@ export default function Home() {
                         type="date"
                         value={taskDateInput}
                         onChange={(e) => setTaskDateInput(e.target.value)}
-                        className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-800 bg-white"
                         required
                       />
                       <p className="text-[11px] font-semibold text-blue-600 mt-1">
@@ -1823,32 +2025,27 @@ export default function Home() {
                       value={taskTitleInput}
                       onChange={(e) => setTaskTitleInput(e.target.value)}
                       placeholder="예: IEP 일지 작성 및 교구 점검 안내"
-                      className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-800"
                       required
                     />
                   </div>
 
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-bold text-slate-700">
-                        상세 지시사항 (확장 입력 칸)
-                      </label>
-                      <span className="text-[11px] text-slate-400">
-                        {taskDetailInput.length}자 입력됨 · 우측 하단 드래그로 높이 조절 가능
-                      </span>
-                    </div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      상세 지시사항
+                    </label>
                     <textarea
-                      rows={9}
+                      rows={8}
                       value={taskDetailInput}
                       onChange={(e) => setTaskDetailInput(e.target.value)}
-                      placeholder={`선생님들께 전달할 세부 지시 내용이나 마감 일정을 여유롭게 입력하세요.\n\n예시)\n1. 주간 IEP 일지 작성 마감: 금요일 17시\n2. 수중/PT 교구 소독 및 정리 상태 점검\n3. 특이사항 발생 시 즉시 관리자 공유`}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm text-slate-800 leading-relaxed resize-y min-h-[220px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="선생님들께 전달할 세부 지시 내용을 입력하세요."
+                      className="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm text-slate-800 leading-relaxed resize-y"
                     />
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition shadow-sm"
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition"
                   >
                     주간 업무 지시 등록
                   </button>
@@ -1856,202 +2053,97 @@ export default function Home() {
               </section>
 
               <section className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                  <h3 className="text-base font-bold text-slate-800">
-                    📋 누적 등록된 주간 업무 및 선생님별 확인 현황 ({weeklyTasks.length}건)
-                  </h3>
-                  <span className="text-[11px] text-slate-400">
-                    항목 클릭 시 상세 팝업 열람 · 등록 선생님 {teachersOnly.length}명 기준
-                  </span>
-                </div>
-
-                {weeklyTasks.length === 0 ? (
-                  <div className="py-12 text-center text-sm text-slate-400">
-                    등록된 주간 업무가 없습니다.
-                  </div>
-                ) : (
-                  <div className="space-y-3.5">
-                    {weeklyTasks.map((task) => {
-                      const targetTeachers = getTargetTeachersForTask(task, teachersOnly);
-                      const checkedCount = targetTeachers.filter((t) =>
-                        isTaskCheckedByTeacher(task, t.id)
-                      ).length;
-
-                      return (
-                        <div
-                          key={task.id}
-                          onClick={() => setPopupTaskId(task.id)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setPopupTaskId(task.id);
-                            }
-                          }}
-                          className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-300 transition cursor-pointer space-y-3"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex flex-wrap items-center gap-2 text-xs">
-                              <span className="px-2.5 py-0.5 rounded-md bg-slate-800 text-white font-bold">
-                                {task.weekLabel}
-                              </span>
-                              <span className="px-2.5 py-0.5 rounded-md bg-blue-100 text-blue-800 font-bold">
-                                대상: {task.assignee}
-                              </span>
-                              <span className="text-slate-400">등록일: {task.createdAt}</span>
-                              <span
-                                className={`px-2.5 py-0.5 rounded-md font-extrabold ${
-                                  targetTeachers.length > 0 &&
-                                  checkedCount === targetTeachers.length
-                                    ? "bg-emerald-600 text-white"
-                                    : "bg-amber-100 text-amber-800"
-                                }`}
-                              >
-                                확인 {checkedCount}/{targetTeachers.length}명
-                              </span>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteWeeklyTask(task.id);
-                              }}
-                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg transition"
-                            >
-                              삭제
-                            </button>
-                          </div>
-
-                          <p className="text-sm font-bold text-slate-800">{task.title}</p>
-
-                          <div className="bg-white rounded-xl border border-slate-200/90 p-3 space-y-2">
-                            <span className="text-[11px] font-bold text-slate-500 block">
-                              선생님별 확인 상태
-                            </span>
-                            <div className="flex flex-wrap items-center gap-2">
-                              {targetTeachers.map((teacher) => {
-                                const done = isTaskCheckedByTeacher(task, teacher.id);
-                                return (
-                                  <span
-                                    key={teacher.id}
-                                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border ${
-                                      done
-                                        ? "bg-emerald-50 text-emerald-800 border-emerald-300"
-                                        : "bg-amber-50 text-amber-800 border-amber-200"
-                                    }`}
-                                  >
-                                    <span>{teacher.name}</span>
-                                    <span>{done ? "✅ 확인 완료" : "⏳ 미확인"}</span>
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          <p className="text-xs text-slate-600 whitespace-pre-line line-clamp-3 leading-relaxed bg-white p-3 rounded-lg border border-slate-200/80">
-                            {task.detail}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-            </div>
-          ) : (
-            <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                <h3 className="text-base font-bold text-slate-800">
-                  📋 누적 주간 업무 목록 ({visibleTasksForTeacher.length}건)
+                <h3 className="text-base font-bold text-slate-800 pb-3 border-b border-slate-100">
+                  📋 누적 등록된 주간 업무 ({weeklyTasks.length}건)
                 </h3>
-                <span className="text-xs text-slate-500">
-                  항목을 클릭하면 상세 내용을 팝업으로 열람합니다.
-                </span>
-              </div>
 
-              {visibleTasksForTeacher.length === 0 ? (
-                <div className="py-12 text-center text-sm text-slate-400">
-                  현재 전달된 주간 업무가 없습니다.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {visibleTasksForTeacher.map((task) => {
-                    const isCheckedMine = isTaskCheckedByTeacher(task, currentUser.id);
+                <div className="space-y-3.5">
+                  {weeklyTasks.map((task) => {
+                    const targetTeachers = getTargetTeachersForTask(task, teachersOnly);
+                    const checkedCount = targetTeachers.filter((t) =>
+                      isTaskCheckedByTeacher(task, t.id)
+                    ).length;
 
                     return (
                       <div
                         key={task.id}
                         onClick={() => setPopupTaskId(task.id)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setPopupTaskId(task.id);
-                          }
-                        }}
-                        className={`p-4 rounded-xl border transition cursor-pointer flex flex-wrap items-center justify-between gap-3 ${
-                          isCheckedMine
-                            ? "bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50/80"
-                            : "bg-slate-50/80 border-slate-200 hover:bg-blue-50/60 hover:border-blue-300"
-                        }`}
+                        className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-blue-50/40 transition cursor-pointer space-y-2.5"
                       >
-                        <div className="space-y-1.5 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-2 text-xs">
-                            <span className="px-2.5 py-0.5 rounded-md bg-blue-600 text-white font-bold">
+                            <span className="px-2.5 py-0.5 rounded-md bg-slate-800 text-white font-bold">
                               {task.weekLabel}
                             </span>
-                            <span className="px-2.5 py-0.5 rounded-md bg-slate-200 text-slate-700 font-bold">
+                            <span className="px-2.5 py-0.5 rounded-md bg-blue-100 text-blue-800 font-bold">
                               대상: {task.assignee}
                             </span>
-                            <span className="text-slate-400">{task.createdAt}</span>
-                            <span
-                              className={`px-2 py-0.5 rounded-md font-bold ${
-                                isCheckedMine
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : "bg-amber-100 text-amber-800"
-                              }`}
-                            >
-                              {isCheckedMine ? "✅ 확인 완료" : "⏳ 미확인"}
+                            <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold">
+                              확인 {checkedCount}/{targetTeachers.length}명
                             </span>
                           </div>
-
-                          <h4 className="text-base font-bold text-slate-800 truncate">
-                            {task.title}
-                          </h4>
-                        </div>
-
-                        <div
-                          className="flex items-center gap-2 shrink-0"
-                          onClick={(e) => e.stopPropagation()}
-                        >
                           <button
                             type="button"
-                            onClick={() => setPopupTaskId(task.id)}
-                            className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteWeeklyTask(task.id);
+                            }}
+                            className="px-2.5 py-1 bg-rose-50 text-rose-600 text-xs font-bold rounded-lg"
                           >
-                            팝업 열기
+                            삭제
                           </button>
-
-                          <label className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-800 cursor-pointer select-none bg-white px-3 py-1.5 rounded-lg border border-slate-300">
-                            <input
-                              type="checkbox"
-                              checked={isCheckedMine}
-                              onChange={() =>
-                                handleToggleWeeklyTaskChecked(task.id, currentUser.id)
-                              }
-                              className="w-4 h-4 accent-emerald-600"
-                            />
-                            <span>확인 완료</span>
-                          </label>
                         </div>
+                        <p className="text-sm font-bold text-slate-800">{task.title}</p>
+                        <p className="text-xs text-slate-600 whitespace-pre-line line-clamp-3 bg-white p-3 rounded-lg border border-slate-200/80">
+                          {task.detail}
+                        </p>
                       </div>
                     );
                   })}
                 </div>
-              )}
+              </section>
+            </div>
+          ) : (
+            <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3">
+                📋 누적 주간 업무 목록 ({visibleTasksForTeacher.length}건)
+              </h3>
+              <div className="space-y-3">
+                {visibleTasksForTeacher.map((task) => {
+                  const isCheckedMine = isTaskCheckedByTeacher(task, currentUser.id);
+                  return (
+                    <div
+                      key={task.id}
+                      onClick={() => setPopupTaskId(task.id)}
+                      className="p-4 rounded-xl border border-slate-200 bg-slate-50/80 hover:bg-blue-50/60 transition cursor-pointer flex flex-wrap items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="px-2.5 py-0.5 rounded-md bg-blue-600 text-white font-bold">
+                            {task.weekLabel}
+                          </span>
+                          <span className="text-slate-400">{task.createdAt}</span>
+                        </div>
+                        <h4 className="text-base font-bold text-slate-800">{task.title}</h4>
+                      </div>
+                      <label
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold bg-white px-3 py-1.5 rounded-lg border border-slate-300 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isCheckedMine}
+                          onChange={() =>
+                            handleToggleWeeklyTaskChecked(task.id, currentUser.id)
+                          }
+                          className="w-4 h-4 accent-emerald-600"
+                        />
+                        <span>확인 완료</span>
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
             </section>
           )}
         </main>
@@ -2062,78 +2154,34 @@ export default function Home() {
             onClick={() => setPopupTaskId(null)}
           >
             <div
-              className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 max-h-[88vh] flex flex-col"
+              className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[88vh] flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="px-2.5 py-0.5 rounded-md bg-blue-600 text-white font-bold">
-                      {selectedPopupTask.weekLabel}
-                    </span>
-                    <span className="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">
-                      대상: {selectedPopupTask.assignee}
-                    </span>
-                    <span className="text-slate-400">
-                      등록일: {selectedPopupTask.createdAt}
-                    </span>
-                  </div>
-                  <h3 className="text-xl font-bold text-slate-900">
+              <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <span className="px-2.5 py-0.5 rounded-md bg-blue-600 text-white text-xs font-bold">
+                    {selectedPopupTask.weekLabel}
+                  </span>
+                  <h3 className="text-xl font-bold text-slate-900 mt-1">
                     {selectedPopupTask.title}
                   </h3>
                 </div>
-
                 <button
                   type="button"
                   onClick={() => setPopupTaskId(null)}
-                  className="text-slate-400 hover:text-slate-700 text-lg font-bold px-2 py-1"
-                  aria-label="팝업 닫기"
+                  className="text-slate-400 hover:text-slate-700 text-lg font-bold"
                 >
                   ✕
                 </button>
               </div>
-
               <div className="flex-1 overflow-y-auto bg-slate-50 border border-slate-200 rounded-xl p-5 text-sm text-slate-800 whitespace-pre-line leading-relaxed">
                 {selectedPopupTask.detail}
               </div>
-
-              <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-                {currentUser.role === "teacher" ? (
-                  <label className="inline-flex items-center gap-2 text-xs font-extrabold text-slate-800 cursor-pointer select-none bg-emerald-50 px-3.5 py-2 rounded-xl border border-emerald-200">
-                    <input
-                      type="checkbox"
-                      checked={isTaskCheckedByTeacher(selectedPopupTask, currentUser.id)}
-                      onChange={() =>
-                        handleToggleWeeklyTaskChecked(selectedPopupTask.id, currentUser.id)
-                      }
-                      className="w-4 h-4 accent-emerald-600"
-                    />
-                    <span>이 주간 업무 내용을 확인했습니다 (확인 완료)</span>
-                  </label>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                    {getTargetTeachersForTask(selectedPopupTask, teachersOnly).map((t) => {
-                      const done = isTaskCheckedByTeacher(selectedPopupTask, t.id);
-                      return (
-                        <span
-                          key={t.id}
-                          className={`px-2.5 py-1 rounded-lg font-bold border ${
-                            done
-                              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                              : "bg-amber-50 text-amber-800 border-amber-200"
-                          }`}
-                        >
-                          {t.name}: {done ? "확인" : "미확인"}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
+              <div className="flex justify-end">
                 <button
                   type="button"
                   onClick={() => setPopupTaskId(null)}
-                  className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition"
+                  className="px-5 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl"
                 >
                   닫기
                 </button>
@@ -2157,10 +2205,18 @@ export default function Home() {
       ? getStudentAttendanceStats(targetStudent.id)
       : { present: 0, absent: 0, makeup: 0, pendingMakeup: 0, total: 0 };
 
+    const historyWeekKey = formatDateKey(historyMonday);
+    const historyWeekLabel = `${historyMonday.getFullYear()}년 ${formatShortDate(
+      historyMonday,
+      0
+    )} (월) ~ ${formatShortDate(historyMonday, 5)} (토)`;
+
     const studentSlots = targetStudent
       ? timetable.filter(
           (slot) =>
-            slot.teacherId === currentUser.id && slot.studentIds.includes(targetStudent.id)
+            slot.teacherId === currentUser.id &&
+            slot.studentIds.includes(targetStudent.id) &&
+            isSlotActiveInWeek(slot, historyWeekKey)
         )
       : [];
 
@@ -2216,12 +2272,6 @@ export default function Home() {
       })
       .sort((a, b) => b.exactDate.localeCompare(a.exactDate));
 
-    const historyWeekKey = formatDateKey(historyMonday);
-    const historyWeekLabel = `${historyMonday.getFullYear()}년 ${formatShortDate(
-      historyMonday,
-      0
-    )} (월) ~ ${formatShortDate(historyMonday, 5)} (토)`;
-
     const moveHistoryWeek = (weeks: number) => {
       const next = new Date(historyMonday);
       next.setDate(historyMonday.getDate() + weeks * 7);
@@ -2236,502 +2286,319 @@ export default function Home() {
       <div className="min-h-screen bg-slate-50 print:bg-white flex flex-col">
         {renderHeader()}
 
-        <main className="flex-1 max-w-6xl w-full mx-auto p-6 print:p-2 space-y-6">
+        <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
             <div>
               <h2 className="text-xl font-bold text-slate-800">
                 📚 {currentUser.name} 담당 학생 누적 IEP & 출결 조회
               </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                개인정보 보호를 위해{" "}
-                <strong>
-                  {currentUser.name} 시간표에 배정된 학생({myAssignedStudents.length}명)
-                </strong>
-                의 기록만 표시됩니다.
-              </p>
             </div>
-
             {targetStudent && (
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl shadow-sm transition"
+                className="px-4 py-2.5 bg-slate-800 text-white text-xs font-bold rounded-xl"
               >
-                🖨️ {targetStudent.name} 상담 보고서 인쇄 / PDF 저장
+                🖨️ {targetStudent.name} 상담 보고서 인쇄 / PDF
               </button>
             )}
           </div>
 
-          {myAssignedStudents.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-sm text-slate-400">
-              현재 배정된 담당 학생이 없습니다.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-12 print:block gap-6">
-              <section className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm h-fit print:hidden">
-                <h3 className="text-sm font-bold text-slate-800 mb-3 pb-2.5 border-b border-slate-100">
-                  담당 학생 명단 ({myAssignedStudents.length}명)
-                </h3>
-                <div className="space-y-2">
-                  {myAssignedStudents.map((st) => {
-                    const age = calculateAge(st.birthDate);
-                    const isSelected = st.id === targetStudent?.id;
-                    const stStats = getStudentAttendanceStats(st.id);
+          <div className="grid grid-cols-1 lg:grid-cols-12 print:block gap-6">
+            <section className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm h-fit print:hidden">
+              <h3 className="text-sm font-bold text-slate-800 mb-3 pb-2.5 border-b border-slate-100">
+                담당 학생 명단 ({myAssignedStudents.length}명)
+              </h3>
+              <div className="space-y-2">
+                {myAssignedStudents.map((st) => {
+                  const age = calculateAge(st.birthDate);
+                  const isSelected = st.id === targetStudent?.id;
+                  const stStats = getStudentAttendanceStats(st.id);
 
-                    return (
-                      <button
-                        key={st.id}
-                        onClick={() => {
-                          setHistoryStudentId(st.id);
-                          setSelectedHistoryKey(null);
-                        }}
-                        className={`w-full p-3.5 rounded-xl border text-left transition ${
-                          isSelected
-                            ? "bg-indigo-50 border-indigo-600 ring-1 ring-indigo-600"
-                            : "bg-slate-50/70 border-slate-200 hover:bg-slate-100"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-1">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="font-bold text-sm text-slate-800">{st.name}</span>
-                            {age !== null && (
-                              <span className="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                                만 {age}세
-                              </span>
-                            )}
-                            {stStats.pendingMakeup > 0 && (
-                              <span className="text-[10px] font-extrabold text-rose-700 bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded-full">
-                                미보강 {stStats.pendingMakeup}회
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[11px] font-bold text-slate-500">
-                            누적 {stStats.total}회
-                          </span>
-                        </div>
-
-                        <p className="text-xs text-slate-500 mt-1">
-                          {st.birthDate}생 {st.schoolGradeClass ? `· ${st.schoolGradeClass}` : ""}
-                        </p>
-
-                        <div className="flex items-center gap-1.5 mt-2">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                            출석 {stStats.present}
-                          </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-800">
-                            결석 {stStats.absent}
-                          </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">
-                            보강 {stStats.makeup}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <section className="lg:col-span-8 space-y-5">
-                {targetStudent && (
-                  <>
-                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-xl font-bold text-slate-800">{targetStudent.name}</h3>
-                          {targetAge !== null && (
-                            <span className="px-2.5 py-1 rounded-full bg-blue-600 text-white text-xs font-bold">
-                              만 {targetAge}세 ({targetStudent.birthDate})
+                  return (
+                    <button
+                      key={st.id}
+                      onClick={() => {
+                        setHistoryStudentId(st.id);
+                        setSelectedHistoryKey(null);
+                      }}
+                      className={`w-full p-3.5 rounded-xl border text-left transition ${
+                        isSelected
+                          ? "bg-indigo-50 border-indigo-600 ring-1 ring-indigo-600"
+                          : "bg-slate-50/70 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-bold text-sm text-slate-800">{st.name}</span>
+                          {age !== null && (
+                            <span className="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                              만 {age}세
                             </span>
                           )}
-                          {targetStudent.schoolGradeClass && (
-                            <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold">
-                              {targetStudent.schoolGradeClass}
+                          {stStats.pendingMakeup > 0 && (
+                            <span className="text-[10px] font-extrabold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded-full">
+                              미보강 {stStats.pendingMakeup}회
                             </span>
                           )}
-                          <span
-                            className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border ${
-                              stats.pendingMakeup > 0
-                                ? "bg-rose-50 text-rose-700 border-rose-200"
-                                : "bg-slate-100 text-slate-700 border-slate-200"
-                            }`}
-                          >
-                            미보강 잔여 {stats.pendingMakeup}회
-                          </span>
                         </div>
-
-                        <div className="flex items-center gap-1.5 text-xs font-bold">
-                          <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            출석 {stats.present}
-                          </span>
-                          <span className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200">
-                            결석 {stats.absent}
-                          </span>
-                          <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200">
-                            보강 {stats.makeup}
-                          </span>
-                        </div>
+                        <span className="text-[11px] font-bold text-slate-500">
+                          누적 {stStats.total}회
+                        </span>
                       </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
 
-                      <div className="space-y-2.5 text-xs">
-                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5">
-                          <span className="font-bold text-slate-700 block mb-1">
-                            1. 초기 상담 및 기초평가 (관리자 작성)
+            <section className="lg:col-span-8 space-y-5">
+              {targetStudent && (
+                <>
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xl font-bold text-slate-800">{targetStudent.name}</h3>
+                        {targetAge !== null && (
+                          <span className="px-2.5 py-1 rounded-full bg-blue-600 text-white text-xs font-bold">
+                            만 {targetAge}세
                           </span>
-                          <p className="text-slate-700 leading-relaxed">
-                            {targetStudent.initialConsultInfo}
-                          </p>
-                        </div>
+                        )}
+                        <span className="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-rose-50 text-rose-700 border border-rose-200">
+                          미보강 잔여 {stats.pendingMakeup}회
+                        </span>
+                      </div>
+                      <div className="flex gap-1.5 text-xs font-bold">
+                        <span className="px-2.5 py-1 rounded bg-emerald-50 text-emerald-700">
+                          출석 {stats.present}
+                        </span>
+                        <span className="px-2.5 py-1 rounded bg-rose-50 text-rose-700">
+                          결석 {stats.absent}
+                        </span>
+                        <span className="px-2.5 py-1 rounded bg-amber-50 text-amber-700">
+                          보강 {stats.makeup}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-xs space-y-2">
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <strong>초기 상담:</strong> {targetStudent.initialConsultInfo}
+                      </div>
+                      <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-200">
+                        <strong>현재 상태:</strong> {targetStudent.currentStatusInfo}
+                      </div>
+                      <div className="bg-indigo-50/70 p-3 rounded-xl border border-indigo-200">
+                        <strong>장기목표:</strong> {targetStudent.longTermGoal || "미설정"}
+                      </div>
+                      <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
+                        <strong>단기목표:</strong> {targetStudent.shortTermGoal || "미설정"}
+                      </div>
+                    </div>
+                  </div>
 
-                        <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5">
-                          <span className="font-bold text-amber-900 block mb-1">
-                            2. 현재 상태 및 관찰 특이사항 (선생님 작성)
-                          </span>
-                          <p className="text-amber-900 leading-relaxed">
-                            {targetStudent.currentStatusInfo}
-                          </p>
-                        </div>
-
-                        <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5">
-                          <span className="font-extrabold text-indigo-800 block mb-1">
-                            3. 장기목표 (Long-Term Goal)
-                          </span>
-                          <p className="text-slate-800 leading-relaxed font-medium">
-                            {targetStudent.longTermGoal || "미설정"}
-                          </p>
-                        </div>
-
-                        <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5">
-                          <span className="font-extrabold text-blue-800 block mb-1">
-                            4. 단기목표 (Short-Term Goal)
-                          </span>
-                          <p className="text-slate-800 leading-relaxed font-medium">
-                            {targetStudent.shortTermGoal || "미설정"}
-                          </p>
-                        </div>
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4 print:hidden">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <h4 className="text-base font-bold text-slate-800">
+                        📂 {targetStudent.name} 누적 기록
+                      </h4>
+                      <div className="flex bg-slate-100 p-1 rounded-xl">
+                        <button
+                          type="button"
+                          onClick={() => setHistoryViewMode("timetable")}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                            historyViewMode === "timetable"
+                              ? "bg-blue-600 text-white"
+                              : "text-slate-600"
+                          }`}
+                        >
+                          주간 시간표
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryViewMode("files")}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                            historyViewMode === "files"
+                              ? "bg-indigo-600 text-white"
+                              : "text-slate-600"
+                          }`}
+                        >
+                          누적 ({studentHistoryList.length})
+                        </button>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4 print:hidden">
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                        <h4 className="text-base font-bold text-slate-800">
-                          📂 {targetStudent.name} IEP 열람 방식
-                        </h4>
-
-                        <div className="flex bg-slate-100 p-1 rounded-xl">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setHistoryViewMode("timetable");
-                              setSelectedHistoryKey(null);
-                            }}
-                            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                              historyViewMode === "timetable"
-                                ? "bg-blue-600 text-white shadow-sm"
-                                : "text-slate-600 hover:text-slate-900"
-                            }`}
-                          >
-                            🗓️ 주간 시간표로 보기
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setHistoryViewMode("files");
-                              setSelectedHistoryKey(null);
-                            }}
-                            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                              historyViewMode === "files"
-                                ? "bg-indigo-600 text-white shadow-sm"
-                                : "text-slate-600 hover:text-slate-900"
-                            }`}
-                          >
-                            📁 누적 파일 목록 ({studentHistoryList.length}개)
-                          </button>
-                        </div>
-                      </div>
-
-                      {historyViewMode === "timetable" && (
-                        <div className="space-y-4">
-                          <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                            <span className="text-xs text-slate-600">
-                              수업 칸을 클릭하면 해당 주차의 전체 IEP가 열립니다.
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => moveHistoryWeek(-1)}
-                                className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700"
-                              >
-                                ◀ 이전 주
-                              </button>
-                              <span className="text-xs font-extrabold text-slate-800 px-2">
-                                {historyWeekLabel}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => moveHistoryWeek(1)}
-                                className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700"
-                              >
-                                다음 주 ▶
-                              </button>
-                            </div>
+                    {historyViewMode === "timetable" ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                          <span className="text-xs font-extrabold text-slate-800">
+                            {historyWeekLabel}
+                          </span>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => moveHistoryWeek(-1)}
+                              className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold"
+                            >
+                              ◀ 이전 주
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveHistoryWeek(1)}
+                              className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold"
+                            >
+                              다음 주 ▶
+                            </button>
                           </div>
+                        </div>
 
-                          <div className="overflow-x-auto">
-                            <table className="w-full border-collapse table-fixed min-w-[600px]">
-                              <thead>
-                                <tr>
-                                  <th className="w-14 p-2 bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-600">
-                                    교시
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse table-fixed min-w-[600px]">
+                            <thead>
+                              <tr>
+                                <th className="w-14 p-2 bg-slate-100 border border-slate-200 text-[11px]">
+                                  교시
+                                </th>
+                                {DAYS.map((day, idx) => (
+                                  <th
+                                    key={day}
+                                    className="p-2 bg-slate-100 border border-slate-200 text-[11px]"
+                                  >
+                                    {day} ({formatShortDate(historyMonday, idx)})
                                   </th>
-                                  {DAYS.map((day, idx) => (
-                                    <th
-                                      key={day}
-                                      className="p-2 bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-700"
-                                    >
-                                      {day} ({formatShortDate(historyMonday, idx)})
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {PERIODS.map((period) => (
-                                  <tr key={period}>
-                                    <td className="p-1.5 bg-slate-50 border border-slate-200 text-center text-[11px] font-bold text-slate-600">
-                                      {period}교시
-                                    </td>
-                                    {DAYS.map((day) => {
-                                      const slot = studentSlots.find(
-                                        (s) => s.day === day && s.period === period
-                                      );
-                                      if (!slot) {
-                                        return (
-                                          <td
-                                            key={`${day}-${period}`}
-                                            className="p-1 border border-slate-200 h-16 bg-slate-50/40 text-center text-[10px] text-slate-300"
-                                          >
-                                            -
-                                          </td>
-                                        );
-                                      }
-
-                                      const catName = getCategoryName(slot.categoryId);
-                                      const theme = getCategoryTheme(slot.categoryId);
-                                      const sessionKey = `${historyWeekKey}_${slot.id}_${targetStudent.id}`;
-                                      const rec = iepRecords[sessionKey];
-                                      const att = attendanceRecords[sessionKey];
-                                      const hasData = Boolean(
-                                        rec?.activityContent || rec?.evaluation || att
-                                      );
-                                      const isSelectedCell = selectedHistoryKey === sessionKey;
-
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {PERIODS.map((period) => (
+                                <tr key={period}>
+                                  <td className="p-1.5 bg-slate-50 border border-slate-200 text-center text-[11px] font-bold">
+                                    {period}교시
+                                  </td>
+                                  {DAYS.map((day) => {
+                                    const slot = studentSlots.find(
+                                      (s) => s.day === day && s.period === period
+                                    );
+                                    if (!slot) {
                                       return (
                                         <td
                                           key={`${day}-${period}`}
-                                          className="p-1 border border-slate-200 h-16 align-top"
+                                          className="p-1 border border-slate-200 h-16 bg-slate-50/40 text-center text-[10px] text-slate-300"
                                         >
-                                          <button
-                                            type="button"
-                                            onClick={() => setSelectedHistoryKey(sessionKey)}
-                                            className={`w-full h-full rounded-lg p-1.5 text-left border transition flex flex-col justify-between ${
-                                              isSelectedCell
-                                                ? "bg-slate-800 text-white border-slate-800 shadow-sm"
-                                                : hasData
-                                                ? `${theme.card} text-slate-800`
-                                                : "bg-white hover:bg-slate-50 border-slate-200 text-slate-500"
-                                            }`}
-                                          >
-                                            <div className="flex items-center justify-between gap-1">
-                                              <span
-                                                className={`text-[10px] font-extrabold px-1 rounded ${
-                                                  isSelectedCell
-                                                    ? "bg-white/20 text-white"
-                                                    : theme.badge
-                                                }`}
-                                              >
-                                                {catName}
-                                              </span>
-                                              {rec?.adminChecked && (
-                                                <span className="text-[10px]" title="관리자 확인됨">
-                                                  ✅
-                                                </span>
-                                              )}
-                                            </div>
-                                            <div className="text-[10px] truncate mt-1">
-                                              {att ? `[${att}] ` : ""}
-                                              {hasData ? "IEP 보기" : "미작성"}
-                                            </div>
-                                          </button>
+                                          -
                                         </td>
                                       );
-                                    })}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-
-                          {selectedHistoryKey && (
-                            <div className="mt-4 p-5 rounded-2xl bg-indigo-50/60 border border-indigo-200 space-y-3">
-                              {(() => {
-                                const [mKey, sId] = selectedHistoryKey.split("_");
-                                const slot = timetable.find((s) => s.id === sId);
-                                const exactDate = slot
-                                  ? getExactDateFromMondayKey(mKey, slot.day)
-                                  : mKey;
-                                const catName = slot ? getCategoryName(slot.categoryId) : "수업";
-                                const theme = slot
-                                  ? getCategoryTheme(slot.categoryId)
-                                  : getCategoryTheme(catName);
-                                const rec = iepRecords[selectedHistoryKey];
-                                const att = attendanceRecords[selectedHistoryKey];
-
-                                return (
-                                  <>
-                                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-200/70 pb-2.5">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <span className="px-2.5 py-1 bg-indigo-600 text-white text-xs font-bold rounded-md">
-                                          {exactDate} ({slot?.day}
-                                          {slot?.period})
-                                        </span>
-                                        <span
-                                          className={`px-2.5 py-1 text-xs font-extrabold rounded-md border ${theme.pill}`}
-                                        >
-                                          {catName}
-                                        </span>
-                                        <span
-                                          className={`px-2 py-0.5 text-xs font-bold rounded border ${getAttendanceBadgeStyle(
-                                            att
-                                          )}`}
-                                        >
-                                          {att || "출결 미체크"}
-                                        </span>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => setSelectedHistoryKey(null)}
-                                        className="text-xs font-bold text-slate-500 hover:text-slate-800"
+                                    }
+                                    const catName = getCategoryName(slot.categoryId);
+                                    const theme = getCategoryTheme(slot.categoryId);
+                                    const sessionKey = `${historyWeekKey}_${slot.id}_${targetStudent.id}`;
+                                    const rec = iepRecords[sessionKey];
+                                    const att = attendanceRecords[sessionKey];
+                                    return (
+                                      <td
+                                        key={`${day}-${period}`}
+                                        className="p-1 border border-slate-200 h-16 align-top"
                                       >
-                                        닫기 ✕
-                                      </button>
-                                    </div>
-
-                                    {!rec ? (
-                                      <p className="text-xs text-slate-500 py-3">
-                                        작성된 IEP 내용이 없습니다.
-                                      </p>
-                                    ) : (
-                                      <div className="space-y-3 text-xs">
-                                        <div className="bg-white p-3.5 rounded-xl border border-slate-200">
-                                          <span className="font-bold text-indigo-700 block mb-1">
-                                            1. 금주 세부 목표
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedHistoryKey(sessionKey)}
+                                          className={`w-full h-full rounded-lg p-1.5 text-left border ${theme.card}`}
+                                        >
+                                          <span
+                                            className={`text-[10px] font-extrabold px-1 rounded ${theme.badge}`}
+                                          >
+                                            {slot.isMakeupSlot ? `보강·${catName}` : catName}
                                           </span>
-                                          <p className="text-slate-800 whitespace-pre-wrap">
-                                            {rec.sessionGoal || "-"}
-                                          </p>
-                                        </div>
-                                        <div className="bg-white p-3.5 rounded-xl border border-slate-200">
-                                          <span className="font-bold text-blue-700 block mb-1">
-                                            2. 세부 수업 활동 내용
-                                          </span>
-                                          <p className="text-slate-800 whitespace-pre-wrap leading-relaxed">
-                                            {rec.activityContent || "-"}
-                                          </p>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                          <div className="bg-white p-3.5 rounded-xl border border-slate-200">
-                                            <span className="font-bold text-slate-700 block mb-1">
-                                              3. 교수적 수정 및 지원 전략 (UDL)
-                                            </span>
-                                            <p className="text-slate-800 whitespace-pre-wrap">
-                                              {rec.supportStrategy || "-"}
-                                            </p>
+                                          <div className="text-[10px] truncate mt-1 text-slate-700">
+                                            {att ? `[${att}] ` : ""}
+                                            {rec?.activityContent ? "IEP 있음" : "미작성"}
                                           </div>
-                                          <div className="bg-white p-3.5 rounded-xl border border-slate-200">
-                                            <span className="font-bold text-emerald-700 block mb-1">
-                                              4. 수행 결과 및 반응
-                                            </span>
-                                            <p className="text-slate-800 whitespace-pre-wrap">
-                                              {rec.evaluation || "-"}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          )}
+                                        </button>
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                      )}
 
-                      {historyViewMode === "files" && (
-                        <div className="space-y-3">
-                          {studentHistoryList.map((item) => {
-                            const isExpanded = activeDetailItem?.key === item.key;
-
-                            return (
-                              <div
-                                key={item.key}
-                                className={`rounded-xl border transition overflow-hidden ${
-                                  isExpanded
-                                    ? "border-indigo-500 bg-indigo-50/30 shadow-sm"
-                                    : "border-slate-200 bg-slate-50/60 hover:bg-slate-100/70"
-                                }`}
+                        {selectedHistoryKey && iepRecords[selectedHistoryKey] && (
+                          <div className="p-4 rounded-xl bg-indigo-50/60 border border-indigo-200 text-xs space-y-2">
+                            <div className="flex justify-between font-bold text-indigo-900">
+                              <span>선택된 회기 IEP 상세</span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedHistoryKey(null)}
                               >
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setSelectedHistoryKey(isExpanded ? null : item.key)
-                                  }
-                                  className="w-full p-4 flex flex-wrap items-center justify-between gap-2 text-left"
-                                >
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="font-bold text-sm text-slate-800">
-                                      {item.exactDate} ({item.dayPeriod}) · {item.categoryName} IEP
-                                    </span>
-                                    {item.attendance && (
-                                      <span
-                                        className={`px-2 py-0.5 text-[11px] font-bold rounded border ${getAttendanceBadgeStyle(
-                                          item.attendance
-                                        )}`}
-                                      >
-                                        {item.attendance}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <span className="text-xs font-bold text-indigo-600">
-                                    {isExpanded ? "접기 ▲" : "내용 열기 ▼"}
-                                  </span>
-                                </button>
-
-                                {isExpanded && (
-                                  <div className="px-4 pb-4 pt-2 border-t border-slate-200/80 space-y-2 text-xs">
-                                    <p>
-                                      <strong>목표:</strong> {item.record.sessionGoal || "-"}
-                                    </p>
-                                    <p className="whitespace-pre-wrap">
-                                      <strong>활동:</strong> {item.record.activityContent || "-"}
-                                    </p>
-                                    <p className="whitespace-pre-wrap">
-                                      <strong>지원:</strong> {item.record.supportStrategy || "-"}
-                                    </p>
-                                    <p className="whitespace-pre-wrap">
-                                      <strong>결과:</strong> {item.record.evaluation || "-"}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </section>
-            </div>
-          )}
+                                닫기 ✕
+                              </button>
+                            </div>
+                            <p>
+                              <strong>목표:</strong> {iepRecords[selectedHistoryKey].sessionGoal || "-"}
+                            </p>
+                            <p className="whitespace-pre-wrap">
+                              <strong>활동:</strong>{" "}
+                              {iepRecords[selectedHistoryKey].activityContent || "-"}
+                            </p>
+                            <p className="whitespace-pre-wrap">
+                              <strong>지원:</strong>{" "}
+                              {iepRecords[selectedHistoryKey].supportStrategy || "-"}
+                            </p>
+                            <p className="whitespace-pre-wrap">
+                              <strong>결과:</strong> {iepRecords[selectedHistoryKey].evaluation || "-"}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {studentHistoryList.map((item) => {
+                          const isExpanded = activeDetailItem?.key === item.key;
+                          return (
+                            <div
+                              key={item.key}
+                              className="rounded-xl border border-slate-200 bg-slate-50/60 overflow-hidden"
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSelectedHistoryKey(isExpanded ? null : item.key)
+                                }
+                                className="w-full p-4 flex items-center justify-between text-left"
+                              >
+                                <span className="font-bold text-sm text-slate-800">
+                                  {item.exactDate} ({item.dayPeriod}) · {item.categoryName} IEP
+                                </span>
+                                <span className="text-xs font-bold text-indigo-600">
+                                  {isExpanded ? "접기 ▲" : "열기 ▼"}
+                                </span>
+                              </button>
+                              {isExpanded && (
+                                <div className="px-4 pb-4 pt-2 border-t border-slate-200 text-xs space-y-1.5">
+                                  <p>
+                                    <strong>목표:</strong> {item.record.sessionGoal || "-"}
+                                  </p>
+                                  <p className="whitespace-pre-wrap">
+                                    <strong>활동:</strong> {item.record.activityContent || "-"}
+                                  </p>
+                                  <p className="whitespace-pre-wrap">
+                                    <strong>지원:</strong> {item.record.supportStrategy || "-"}
+                                  </p>
+                                  <p className="whitespace-pre-wrap">
+                                    <strong>결과:</strong> {item.record.evaluation || "-"}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
         </main>
       </div>
     );
@@ -2747,20 +2614,29 @@ export default function Home() {
       ? getAssignedStudentsForTeacher(selectedTeacher.id)
       : [];
 
-    const teacherAllSlots = timetable.filter((s) => s.teacherId === selectedTeacher?.id);
+    const reviewWeekKey = formatDateKey(reviewMonday);
+    const reviewWeekLabel = `${reviewMonday.getFullYear()}년 ${formatShortDate(
+      reviewMonday,
+      0
+    )} (월) ~ ${formatShortDate(reviewMonday, 5)} (토)`;
+
+    const teacherAllSlots = timetable.filter(
+      (s) => s.teacherId === selectedTeacher?.id && isSlotActiveInWeek(s, reviewWeekKey)
+    );
     const filteredReviewSlots =
       reviewStudentFilterId === "all"
         ? teacherAllSlots
         : teacherAllSlots.filter((s) => s.studentIds.includes(reviewStudentFilterId));
 
-    const teacherSlotIds = new Set(teacherAllSlots.map((s) => s.id));
+    const teacherSlotIds = new Set(
+      timetable.filter((s) => s.teacherId === selectedTeacher?.id).map((s) => s.id)
+    );
 
     const teacherIepList = Object.entries(iepRecords)
       .filter(([key, rec]) => {
         const [, slotId, stId] = key.split("_");
         if (!teacherSlotIds.has(slotId)) return false;
         if (reviewStudentFilterId !== "all" && stId !== reviewStudentFilterId) return false;
-
         const hasContent = Boolean(
           rec.sessionGoal.trim() ||
             rec.activityContent.trim() ||
@@ -2777,7 +2653,6 @@ export default function Home() {
         const student = students.find((st) => st.id === stId);
         const exactDate = slot ? getExactDateFromMondayKey(mondayKey, slot.day) : mondayKey;
         const categoryName = slot ? getCategoryName(slot.categoryId) : "수업";
-
         return {
           key,
           exactDate,
@@ -2789,12 +2664,6 @@ export default function Home() {
         };
       })
       .sort((a, b) => b.exactDate.localeCompare(a.exactDate));
-
-    const reviewWeekKey = formatDateKey(reviewMonday);
-    const reviewWeekLabel = `${reviewMonday.getFullYear()}년 ${formatShortDate(
-      reviewMonday,
-      0
-    )} (월) ~ ${formatShortDate(reviewMonday, 5)} (토)`;
 
     const moveReviewWeek = (weeks: number) => {
       const next = new Date(reviewMonday);
@@ -2876,7 +2745,6 @@ export default function Home() {
                 </span>
               )}
             </div>
-
             <span
               className={`px-3 py-1 rounded-full text-xs font-bold ${
                 rec.adminChecked
@@ -2913,9 +2781,7 @@ export default function Home() {
 
           <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-extrabold text-emerald-900">
-                ✍️ 관리자 피드백
-              </label>
+              <label className="text-xs font-extrabold text-emerald-900">✍️ 관리자 피드백</label>
               <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-emerald-900">
                 <input
                   type="checkbox"
@@ -3143,7 +3009,7 @@ export default function Home() {
                                 <span
                                   className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${theme.badge}`}
                                 >
-                                  {catName}
+                                  {slot.isMakeupSlot ? `보강·${catName}` : catName}
                                 </span>
                                 <div className="text-[11px] font-bold text-slate-800 truncate mt-1">
                                   {slot.studentIds
@@ -3229,7 +3095,7 @@ export default function Home() {
   }
 
   // ============================================================================
-  // [관리자 전용 페이지 1] 학생 명단 관리 (미보강 잔여 횟수 배지 포함)
+  // [관리자 전용 페이지 1] 학생 명단 관리
   // ============================================================================
   if (currentUser.role === "admin" && activePage === "students") {
     const previewAge = calculateAge(studentBirthInput);
@@ -3256,10 +3122,6 @@ export default function Home() {
               <h2 className="text-xl font-bold text-slate-800">
                 🎓 학생 명단 및 기초·목표·보강 관리
               </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                결석 및 보강 기록을 바탕으로 <strong>미보강 잔여 횟수</strong>가 자동
-                집계됩니다.
-              </p>
             </div>
             {studentMessage && (
               <span className="text-xs font-bold px-3.5 py-2 rounded-xl bg-slate-800 text-white">
@@ -3488,7 +3350,7 @@ export default function Home() {
   }
 
   // ============================================================================
-  // [관리자 전용 페이지 2] 수업 종류 및 색상 관리 (10색 팔레트)
+  // [관리자 전용 페이지 2] 수업 종류 및 색상 관리
   // ============================================================================
   if (currentUser.role === "admin" && activePage === "categories") {
     const usedColorKeys = new Set(
@@ -3501,12 +3363,7 @@ export default function Home() {
 
         <main className="flex-1 max-w-5xl w-full mx-auto p-6 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">🏷️ 수업 종류 및 색상 관리</h2>
-              <p className="text-xs text-slate-500 mt-1">
-                10가지 색상 중 원하는 색상을 선택하여 수업별로 구분할 수 있습니다.
-              </p>
-            </div>
+            <h2 className="text-xl font-bold text-slate-800">🏷️ 수업 종류 및 색상 관리</h2>
             {categoryMessage && (
               <span className="text-xs font-bold px-3.5 py-2 rounded-xl bg-slate-800 text-white">
                 {categoryMessage}
@@ -3857,7 +3714,7 @@ export default function Home() {
   }
 
   // ============================================================================
-  // [2페이지] 수업 상세 페이지 (3번: 지난 차시 불러오기 & 문구 템플릿 삽입 포함)
+  // [2페이지] 수업 상세 페이지 (상·중·하 IEP + 기본루틴/중 템플릿 + 보강 날짜 팝업)
   // ============================================================================
   if (activePage === "detail" && selectedSlotId) {
     const selectedSlot = timetable.find((s) => s.id === selectedSlotId);
@@ -3878,18 +3735,27 @@ export default function Home() {
     const currentAttendance = attendanceRecords[recordKey];
     const currentIEP: IEPRecord = iepRecords[recordKey] || {
       sessionGoal: "",
+      activityTop: "",
+      activityMiddle: "",
+      activityBottom: "",
       activityContent: "",
       supportStrategy: "",
       evaluation: "",
       nextPlan: "",
     };
 
+    const activitySections = parseActivitySections(currentIEP);
+
     const previousSession = selectedStudent
       ? getPreviousSessionRecord(selectedStudent.id, exactClassDate)
       : null;
 
-    const handleSelectAttendance = (studentId: string, status: AttendanceStatus) => {
-      const targetKey = `${weekKey}_${selectedSlot.id}_${studentId}`;
+    const handleSelectAttendance = (student: Student, status: AttendanceStatus) => {
+      if (status === "보강") {
+        openMakeupPopup(student, selectedSlot, exactClassDate);
+        return;
+      }
+      const targetKey = `${weekKey}_${selectedSlot.id}_${student.id}`;
       setAttendanceRecords((prev) => ({
         ...prev,
         [targetKey]: status,
@@ -3934,16 +3800,90 @@ export default function Home() {
       setSaveMessage("");
     };
 
-    // [3번] 지난 차시 내용 복사해오기
+    const handleActivitySectionChange = (
+      section: "top" | "middle" | "bottom",
+      value: string
+    ) => {
+      const nextTop = section === "top" ? value : activitySections.top;
+      const nextMiddle = section === "middle" ? value : activitySections.middle;
+      const nextBottom = section === "bottom" ? value : activitySections.bottom;
+
+      setIepRecords((prev) => ({
+        ...prev,
+        [recordKey]: {
+          ...currentIEP,
+          activityTop: nextTop,
+          activityMiddle: nextMiddle,
+          activityBottom: nextBottom,
+          activityContent: buildCombinedActivityText(nextTop, nextMiddle, nextBottom),
+        },
+      }));
+      setSaveMessage("");
+    };
+
+    // 기본 루틴 누르면 상, 하에 자동 입력
+    const handleApplyBasicRoutine = () => {
+      const nextTop = activitySections.top.trim()
+        ? `${activitySections.top.trim()}\n${BASIC_ROUTINE_TOP}`
+        : BASIC_ROUTINE_TOP;
+      const nextBottom = activitySections.bottom.trim()
+        ? `${activitySections.bottom.trim()}\n${BASIC_ROUTINE_BOTTOM}`
+        : BASIC_ROUTINE_BOTTOM;
+
+      setIepRecords((prev) => ({
+        ...prev,
+        [recordKey]: {
+          ...currentIEP,
+          activityTop: nextTop,
+          activityMiddle: activitySections.middle,
+          activityBottom: nextBottom,
+          activityContent: buildCombinedActivityText(
+            nextTop,
+            activitySections.middle,
+            nextBottom
+          ),
+        },
+      }));
+      setSaveMessage("✨ 기본 루틴이 상(준비운동·동기유발)과 하(마무리·피드백)에 채워졌습니다.");
+      setTimeout(() => setSaveMessage(""), 3000);
+    };
+
+    // 중(본시수업) 템플릿 삽입
+    const handleInsertMiddleTemplate = (templateText: string) => {
+      const nextMiddle = activitySections.middle.trim()
+        ? `${activitySections.middle.trim()}\n${templateText}`
+        : templateText;
+      handleActivitySectionChange("middle", nextMiddle);
+      setSaveMessage("✨ 중(본시수업) 템플릿이 추가되었습니다.");
+      setTimeout(() => setSaveMessage(""), 2500);
+    };
+
+    const handleInsertSupportTemplate = (templateText: string) => {
+      const existingText = currentIEP.supportStrategy || "";
+      const nextText = existingText.trim()
+        ? `${existingText.trim()}\n${templateText}`
+        : templateText;
+      handleIEPChange("supportStrategy", nextText);
+      setSaveMessage("✨ 지원 전략 템플릿이 추가되었습니다.");
+      setTimeout(() => setSaveMessage(""), 2500);
+    };
+
     const handleCopyPreviousSession = () => {
       if (!previousSession) return;
+      const prevSections = parseActivitySections(previousSession.record);
+      const nextTop = prevSections.top || activitySections.top;
+      const nextMiddle = prevSections.middle || activitySections.middle;
+      const nextBottom = prevSections.bottom || activitySections.bottom;
+
       setIepRecords((prev) => ({
         ...prev,
         [recordKey]: {
           ...currentIEP,
           sessionGoal: previousSession.record.sessionGoal || currentIEP.sessionGoal,
-          activityContent:
-            previousSession.record.activityContent || currentIEP.activityContent,
+          activityTop: nextTop,
+          activityMiddle: nextMiddle,
+          activityBottom: nextBottom,
+          activityContent: buildCombinedActivityText(nextTop, nextMiddle, nextBottom),
           supportStrategy:
             previousSession.record.supportStrategy || currentIEP.supportStrategy,
         },
@@ -3952,22 +3892,22 @@ export default function Home() {
       setTimeout(() => setSaveMessage(""), 3000);
     };
 
-    // [3번] 템플릿 문구 삽입
-    const handleInsertTemplate = (
-      field: "activityContent" | "supportStrategy",
-      templateText: string
-    ) => {
-      const existingText = currentIEP[field] || "";
-      const nextText = existingText.trim()
-        ? `${existingText.trim()}\n${templateText}`
-        : templateText;
-      handleIEPChange(field, nextText);
-      setSaveMessage("✨ 템플릿 문구가 추가되었습니다.");
-      setTimeout(() => setSaveMessage(""), 2500);
-    };
-
     const handleSaveIEP = (e: React.FormEvent) => {
       e.preventDefault();
+      setIepRecords((prev) => ({
+        ...prev,
+        [recordKey]: {
+          ...currentIEP,
+          activityTop: activitySections.top,
+          activityMiddle: activitySections.middle,
+          activityBottom: activitySections.bottom,
+          activityContent: buildCombinedActivityText(
+            activitySections.top,
+            activitySections.middle,
+            activitySections.bottom
+          ),
+        },
+      }));
       setSaveMessage(
         `✅ ${exactClassDate} (${selectedSlot.day}${selectedSlot.period}) [${selectedStudent.name}] 저장 완료!`
       );
@@ -3994,7 +3934,7 @@ export default function Home() {
               <span
                 className={`px-2.5 py-1 text-xs font-extrabold rounded-md border ${categoryTheme.pill}`}
               >
-                {categoryName}
+                {selectedSlot.isMakeupSlot ? `보강·${categoryName}` : categoryName}
               </span>
               {selectedSlot.detailTitle && (
                 <h2 className="text-base font-bold text-slate-800">{selectedSlot.detailTitle}</h2>
@@ -4014,7 +3954,7 @@ export default function Home() {
           <div className="bg-white rounded-2xl border border-slate-200 p-4 px-5 shadow-sm">
             <div className="flex items-center justify-between gap-2 mb-2.5">
               <h3 className="text-xs font-bold text-slate-700">
-                👥 참여 학생 선택 및 금일 출결 체크
+                👥 참여 학생 선택 및 금일 출결 체크 (보강 클릭 시 날짜 팝업)
               </h3>
               <span className="text-[11px] text-slate-400">실시간 자동 저장됨</span>
             </div>
@@ -4081,7 +4021,7 @@ export default function Home() {
                           <button
                             key={statusOption}
                             type="button"
-                            onClick={() => handleSelectAttendance(student.id, statusOption)}
+                            onClick={() => handleSelectAttendance(student, statusOption)}
                             className={`flex-1 py-1 rounded-lg text-[11px] font-bold border transition ${activeClass}`}
                           >
                             {statusOption}
@@ -4295,30 +4235,76 @@ export default function Home() {
                     />
                   </div>
 
-                  <div>
-                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                      <label className="block text-xs font-bold text-slate-700">
-                        2. 세부 수업 활동 내용
-                      </label>
-                      <div className="flex flex-wrap items-center gap-1">
-                        {ACTIVITY_TEMPLATES.map((tpl) => (
-                          <button
-                            type="button"
-                            key={tpl.label}
-                            onClick={() => handleInsertTemplate("activityContent", tpl.text)}
-                            className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md text-[10px] font-bold"
-                          >
-                            + {tpl.label}
-                          </button>
-                        ))}
-                      </div>
+                  {/* [상 · 중 · 하] 세분화된 수업 활동 칸 */}
+                  <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-extrabold text-slate-800">
+                        2. 세부 수업 활동 내용 (상 · 중 · 하)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleApplyBasicRoutine}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-extrabold rounded-lg shadow-sm transition"
+                      >
+                        ✨ 기본 루틴 채우기 (상·하 자동 입력)
+                      </button>
                     </div>
-                    <textarea
-                      rows={5}
-                      value={currentIEP.activityContent}
-                      onChange={(e) => handleIEPChange("activityContent", e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm leading-relaxed"
-                    />
+
+                    {/* 상 - 준비운동 및 동기유발 */}
+                    <div>
+                      <label className="block text-xs font-bold text-sky-800 mb-1">
+                        상 - 준비운동 및 동기유발
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={activitySections.top}
+                        onChange={(e) => handleActivitySectionChange("top", e.target.value)}
+                        placeholder="준비운동 및 동기유발 내용을 입력하세요."
+                        className="w-full px-3.5 py-2.5 bg-white border border-sky-200 rounded-xl text-sm leading-relaxed"
+                      />
+                    </div>
+
+                    {/* 중 - 본시수업 + 개별 템플릿 칩 */}
+                    <div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                        <label className="block text-xs font-bold text-indigo-800">
+                          중 - 본시수업
+                        </label>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {MIDDLE_ACTIVITY_TEMPLATES.map((tpl) => (
+                            <button
+                              type="button"
+                              key={tpl.label}
+                              onClick={() => handleInsertMiddleTemplate(tpl.text)}
+                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-lg text-[11px] font-bold transition"
+                            >
+                              + {tpl.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <textarea
+                        rows={3}
+                        value={activitySections.middle}
+                        onChange={(e) => handleActivitySectionChange("middle", e.target.value)}
+                        placeholder="본시수업 내용을 입력하거나 위 템플릿을 클릭해 추가하세요."
+                        className="w-full px-3.5 py-2.5 bg-white border border-indigo-200 rounded-xl text-sm leading-relaxed"
+                      />
+                    </div>
+
+                    {/* 하 - 마무리 운동 및 금일 피드백 */}
+                    <div>
+                      <label className="block text-xs font-bold text-emerald-800 mb-1">
+                        하 - 마무리 운동 및 금일 피드백
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={activitySections.bottom}
+                        onChange={(e) => handleActivitySectionChange("bottom", e.target.value)}
+                        placeholder="마무리 운동 및 금일 피드백 내용을 입력하세요."
+                        className="w-full px-3.5 py-2.5 bg-white border border-emerald-200 rounded-xl text-sm leading-relaxed"
+                      />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -4332,7 +4318,7 @@ export default function Home() {
                             <button
                               type="button"
                               key={tpl.label}
-                              onClick={() => handleInsertTemplate("supportStrategy", tpl.text)}
+                              onClick={() => handleInsertSupportTemplate(tpl.text)}
                               className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-md text-[10px] font-bold"
                             >
                               + {tpl.label}
@@ -4419,99 +4405,130 @@ export default function Home() {
             </div>
           )}
         </main>
+
+        {/* [보강 날짜 선택 팝업 모달] */}
+        {makeupModalData && (
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+            onClick={() => setMakeupModalData(null)}
+          >
+            <div
+              className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <span className="text-xs font-extrabold text-amber-600">보강 일정 배정</span>
+                  <h3 className="text-lg font-bold text-slate-800">
+                    {makeupModalData.student.name} 보강 날짜 선택
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMakeupModalData(null)}
+                  className="text-slate-400 hover:text-slate-700 text-lg font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmMakeupSchedule} className="space-y-4">
+                <div className="text-xs bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-900">
+                  기준 수업: <strong>{makeupModalData.originalDate}</strong> ·{" "}
+                  <strong>{getCategoryName(makeupModalData.slot.categoryId)}</strong>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      보강 날짜 <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={makeupDateInput}
+                      onChange={(e) => setMakeupDateInput(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      보강 교시
+                    </label>
+                    <select
+                      value={makeupPeriodInput}
+                      onChange={(e) => setMakeupPeriodInput(Number(e.target.value))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm bg-white"
+                    >
+                      {PERIODS.map((p) => (
+                        <option key={p} value={p}>
+                          {p}교시
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    보강 수업 메모
+                  </label>
+                  <input
+                    type="text"
+                    value={makeupDetailInput}
+                    onChange={(e) => setMakeupDetailInput(e.target.value)}
+                    className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setMakeupModalData(null)}
+                    className="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl"
+                  >
+                    시간표 반영 및 관리자 알림
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   // ============================================================================
-  // [1페이지] 주간 수업 시간표 메인 화면 (4번 관리자 주간 요약 대시보드 + 2번 미보강 표시)
+  // [1페이지] 주간 수업 시간표 메인 화면
   // ============================================================================
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {renderHeader()}
 
       <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-5">
+        {saveMessage && (
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-2.5 rounded-xl text-xs font-bold">
+            {saveMessage}
+          </div>
+        )}
+
         {currentUser.role === "admin" && (
           <>
-            {/* [4번] 관리자 주간 요약 대시보드 */}
-            <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-                <span className="text-[11px] font-bold text-slate-400 block">
-                  이번 주 배정 수업 / 회기
-                </span>
-                <div className="mt-1 flex items-baseline gap-1.5">
-                  <span className="text-2xl font-extrabold text-slate-900">
-                    {adminWeeklySummary.totalSlots}칸
-                  </span>
-                  <span className="text-xs font-semibold text-slate-500">
-                    ({adminWeeklySummary.totalStudentSessions}건)
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-                <span className="text-[11px] font-bold text-slate-400 block">
-                  이번 주 IEP 작성률
-                </span>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-2xl font-extrabold text-indigo-600">
-                    {adminWeeklySummary.completionRate}%
-                  </span>
-                  <span className="text-xs font-semibold text-slate-500">
-                    ({adminWeeklySummary.completedIepCount}/
-                    {adminWeeklySummary.totalStudentSessions}건)
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-                <span className="text-[11px] font-bold text-slate-400 block">
-                  이번 주 출결 (출석·결석·보강)
-                </span>
-                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs font-extrabold">
-                  <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                    출석 {adminWeeklySummary.weekPresent}
-                  </span>
-                  <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800">
-                    결석 {adminWeeklySummary.weekAbsent}
-                  </span>
-                  <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800">
-                    보강 {adminWeeklySummary.weekMakeup}
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center justify-between gap-2">
-                <div>
-                  <span className="text-[11px] font-bold text-slate-400 block">
-                    미확인 주간 업무 / 미검토 IEP
-                  </span>
-                  <div className="mt-1 flex items-center gap-2 text-sm font-extrabold">
-                    <span className="text-slate-800">
-                      업무 {adminWeeklySummary.uncheckedTasksAll}건
-                    </span>
-                    <span className="text-slate-300">·</span>
-                    <span className="text-rose-600">IEP {totalUncheckedIepCount}건</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActivePage("adminReview")}
-                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold rounded-xl shrink-0"
-                >
-                  검토 →
-                </button>
-              </div>
-            </section>
-
+            {/* 1. 선생님 선택 칸을 가장 위로 배치 */}
             <div className="bg-slate-800 text-white rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-sm">
               <div className="flex items-center gap-3">
                 <span className="px-2.5 py-1 bg-amber-400 text-slate-900 text-xs font-extrabold rounded-md">
-                  관리자 시간표 편성
+                  선생님 선택
                 </span>
                 <span className="text-sm text-slate-200">
-                  선생님을 선택하고 시간표 칸의 <strong>[+]</strong> 또는 <strong>[편집]</strong>을
-                  눌러 수업을 배정하세요.
+                  선택한 <strong>{activeTeacher?.name}</strong> 기준으로 아래 현황과 시간표가
+                  표시됩니다.
                 </span>
               </div>
 
@@ -4531,6 +4548,119 @@ export default function Home() {
                 ))}
               </div>
             </div>
+
+            {/* 2. 선생님 선택 밑에 위치: 선택된 선생님별 주간 수업·IEP 작성률·출결·업무 현황 */}
+            <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+                <span className="text-[11px] font-bold text-slate-400 block">
+                  {activeTeacher?.name} 주간 수업 / 회기
+                </span>
+                <div className="mt-1 flex items-baseline gap-1.5">
+                  <span className="text-2xl font-extrabold text-slate-900">
+                    {selectedTeacherSummary.totalSlots}칸
+                  </span>
+                  <span className="text-xs font-semibold text-slate-500">
+                    ({selectedTeacherSummary.totalStudentSessions}건)
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+                <span className="text-[11px] font-bold text-slate-400 block">
+                  {activeTeacher?.name} IEP 작성률
+                </span>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="text-2xl font-extrabold text-indigo-600">
+                    {selectedTeacherSummary.completionRate}%
+                  </span>
+                  <span className="text-xs font-semibold text-slate-500">
+                    ({selectedTeacherSummary.completedIepCount}/
+                    {selectedTeacherSummary.totalStudentSessions}건)
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+                <span className="text-[11px] font-bold text-slate-400 block">
+                  {activeTeacher?.name} 출결 현황
+                </span>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs font-extrabold">
+                  <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                    출석 {selectedTeacherSummary.weekPresent}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800">
+                    결석 {selectedTeacherSummary.weekAbsent}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800">
+                    보강 {selectedTeacherSummary.weekMakeup}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center justify-between gap-2">
+                <div>
+                  <span className="text-[11px] font-bold text-slate-400 block">
+                    미확인 업무 / 미검토 IEP
+                  </span>
+                  <div className="mt-1 flex items-center gap-2 text-sm font-extrabold">
+                    <span className="text-slate-800">
+                      업무 {selectedTeacherSummary.uncheckedTasksForTeacher}건
+                    </span>
+                    <span className="text-slate-300">·</span>
+                    <span className="text-rose-600">
+                      IEP {selectedTeacherSummary.uncheckedIepForTeacher}건
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReviewTeacherId(activeTeacher?.id || "t-1");
+                    setActivePage("adminReview");
+                  }}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold rounded-xl shrink-0"
+                >
+                  검토 →
+                </button>
+              </div>
+            </section>
+
+            {/* [관리자 보강 반영 알림 박스] */}
+            {unacknowledgedMakeupList.length > 0 && (
+              <section className="bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold text-amber-950">
+                    🔔 교사 보강 날짜 반영 알림 ({unacknowledgedMakeupList.length}건)
+                  </span>
+                  <span className="text-[11px] text-amber-800">
+                    해당 선생님·날짜의 주간 시간표에 보강 수업이 반영되었습니다.
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {unacknowledgedMakeupList.map((noti) => (
+                    <div
+                      key={noti.id}
+                      className="bg-white border border-amber-200 rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs"
+                    >
+                      <div className="text-slate-800">
+                        <strong>{noti.teacherName}</strong> · <strong>{noti.studentName}</strong>{" "}
+                        ({noti.categoryName}) — 결석({noti.originalDate}) → 보강{" "}
+                        <strong className="text-amber-700">
+                          {noti.makeupDate} ({noti.makeupDay}요일 {noti.makeupPeriod}교시)
+                        </strong>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleAcknowledgeMakeupNotification(noti.id)}
+                        className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold rounded-lg"
+                      >
+                        알림 확인
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </>
         )}
 
@@ -4648,9 +4778,9 @@ export default function Home() {
                                   <span
                                     className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border truncate ${theme.pill}`}
                                   >
-                                    {catName}
+                                    {slot.isMakeupSlot ? `보강·${catName}` : catName}
                                   </span>
-                                  {hasPendingMakeupInSlot && (
+                                  {!slot.isMakeupSlot && hasPendingMakeupInSlot && (
                                     <span
                                       title="미보강 잔여 횟수가 있는 학생이 포함된 수업입니다"
                                       className="text-[9px] font-extrabold px-1 py-0.2 rounded bg-rose-600 text-white shrink-0"
