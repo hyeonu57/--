@@ -249,18 +249,24 @@ const INITIAL_STUDENTS: Student[] = [
     name: "민규빈",
     birthDate: "2016-05-14",
     schoolGradeClass: "경산초등학교 4학년 2반",
-    initialConsultInfo: "초기 상담(2026.03): 상지 협응력 양호, 청각 지시보다 시각적 단서 제공 시 과제 이해도가 높음.",
-    currentStatusInfo: "최근 낮은 평균대 보행 안정감 향상됨. 피로 누적 시 집중력이 다소 떨어져 15분 단위 휴식 권장.",
-    longTermGoal: "다양한 지지면 환경에서 독립적으로 동적 균형을 유지하며 이동 움직임 수행하기",
-    shortTermGoal: "높이 10cm 평균대 위에서 양팔을 벌리고 5초간 정적 균형 유지 후 끝까지 보행하기",
+    initialConsultInfo:
+      "초기 상담(2026.03): 상지 협응력 양호, 청각 지시보다 시각적 단서 제공 시 과제 이해도가 높음.",
+    currentStatusInfo:
+      "최근 낮은 평균대 보행 안정감 향상됨. 피로 누적 시 집중력이 다소 떨어져 15분 단위 휴식 권장.",
+    longTermGoal:
+      "다양한 지지면 환경에서 독립적으로 동적 균형을 유지하며 이동 움직임 수행하기",
+    shortTermGoal:
+      "높이 10cm 평균대 위에서 양팔을 벌리고 5초간 정적 균형 유지 후 끝까지 보행하기",
   },
   {
     id: "st-2",
     name: "김서연",
     birthDate: "2016-09-22",
     schoolGradeClass: "경산초등학교 4학년 2반",
-    initialConsultInfo: "초기 상담(2026.03): 새로운 환경에 낯가림이 있으나 라포 형성 후 규칙적인 활동 선호.",
-    currentStatusInfo: "짝 활동 및 릴레이 게임에 높은 흥미를 보임. 물에 대한 두려움이 줄어 수중 호흡 연습 가능.",
+    initialConsultInfo:
+      "초기 상담(2026.03): 새로운 환경에 낯가림이 있으나 라포 형성 후 규칙적인 활동 선호.",
+    currentStatusInfo:
+      "짝 활동 및 릴레이 게임에 높은 흥미를 보임. 물에 대한 두려움이 줄어 수중 호흡 연습 가능.",
     longTermGoal: "소집단 규칙 게임에 자발적으로 참여하며 기초 체력 및 협응력 증진하기",
     shortTermGoal: "교사의 시범 후 2단계 연속 동작(던지고 받기)을 5회 중 4회 이상 성공하기",
   },
@@ -269,18 +275,23 @@ const INITIAL_STUDENTS: Student[] = [
     name: "박도윤",
     birthDate: "2015-03-08",
     schoolGradeClass: "영남초등학교 5학년 1반",
-    initialConsultInfo: "초기 상담(2026.04): 대근육 활동 의욕이 매우 높으나 순서 기다리기 및 충동 조절 지원 필요.",
-    currentStatusInfo: "타이머 시각 자료 활용 시 대기 시간이 크게 개선됨. 하체 근력 트레이닝 강도 상향 가능.",
+    initialConsultInfo:
+      "초기 상담(2026.04): 대근육 활동 의욕이 매우 높으나 순서 기다리기 및 충동 조절 지원 필요.",
+    currentStatusInfo:
+      "타이머 시각 자료 활용 시 대기 시간이 크게 개선됨. 하체 근력 트레이닝 강도 상향 가능.",
     longTermGoal: "게임 규칙과 순서를 준수하며 근지구력 및 조절된 신체 움직임 발휘하기",
-    shortTermGoal: "시각 타이머 안내에 따라 30초 대기 후 스쿼트 및 점프 동작 10회 완수하기",
+    shortTermGoal:
+      "시각 타이머 안내에 따라 30초 대기 후 스쿼트 및 점프 동작 10회 완수하기",
   },
   {
     id: "st-4",
     name: "이하은",
     birthDate: "2017-11-30",
     schoolGradeClass: "",
-    initialConsultInfo: "초기 상담(2026.05): 소도구 조작 경험이 적고 근긴장도가 다소 낮음. 긍정적 칭찬에 반응 우수.",
-    currentStatusInfo: "큰 짐볼 및 스펀지 공 잡기 성공률 80% 도달. 작은 크기의 공으로 점진적 난이도 조정 중.",
+    initialConsultInfo:
+      "초기 상담(2026.05): 소도구 조작 경험이 적고 근긴장도가 다소 낮음. 긍정적 칭찬에 반응 우수.",
+    currentStatusInfo:
+      "큰 짐볼 및 스펀지 공 잡기 성공률 80% 도달. 작은 크기의 공으로 점진적 난이도 조정 중.",
     longTermGoal: "다양한 크기와 무게의 공을 조작하며 눈-손 협응력 및 상지 근력 기르기",
     shortTermGoal: "2m 거리에서 굴러오는 배구공 크기의 공을 두 손으로 정확히 포구하기",
   },
@@ -411,19 +422,24 @@ function getTargetTeachersForTask(
   task: Pick<WeeklyTask, "assignee">,
   teachers: UserAccount[]
 ): UserAccount[] {
-  if (task.assignee === "전체 선생님" || task.assignee === "전체 교사") {
+  const trimmedAssignee = task.assignee.trim();
+  if (trimmedAssignee === "전체 선생님" || trimmedAssignee === "전체 교사") {
     return teachers;
   }
+  const normalizedTarget = trimmedAssignee.replace(/\s*선생님$/, "");
   const matched = teachers.filter(
     (t) =>
-      t.name === task.assignee ||
-      task.assignee.includes(t.name.replace(" 선생님", ""))
+      t.name === trimmedAssignee ||
+      t.name.replace(/\s*선생님$/, "") === normalizedTarget
   );
   return matched.length > 0 ? matched : teachers;
 }
 
 function isTaskCheckedByTeacher(task: WeeklyTask, teacherId: string): boolean {
-  if (task.checkedByTeachers && Object.prototype.hasOwnProperty.call(task.checkedByTeachers, teacherId)) {
+  if (
+    task.checkedByTeachers &&
+    Object.prototype.hasOwnProperty.call(task.checkedByTeachers, teacherId)
+  ) {
     return Boolean(task.checkedByTeachers[teacherId]);
   }
   return Boolean(task.checkedByTeacher);
@@ -516,8 +532,10 @@ function createDefaultIEPRecords(): Record<string, IEPRecord> {
       sessionGoal: "높이 10cm 평균대 중간 지점에서 정지 후 5초간 균형 유지하기",
       activityContent:
         "낮은 평균대 워킹 워밍업 후 10cm 평균대 중앙 색깔 표식에서 양팔을 벌리고 5초 정지 균형 훈련 진행",
-      supportStrategy: "교사가 정면에서 손바닥 시각 신호로 정지 타이밍 안내 및 5초 카운트 시각 타이머 활용",
-      evaluation: "보조 없이 4초간 균형 유지 성공. 표적 바구니 던지기 활동에 높은 흥미를 보임.",
+      supportStrategy:
+        "교사가 정면에서 손바닥 시각 신호로 정지 타이밍 안내 및 5초 카운트 시각 타이머 활용",
+      evaluation:
+        "보조 없이 4초간 균형 유지 성공. 표적 바구니 던지기 활동에 높은 흥미를 보임.",
       progressStatus: "진행 중(향상)",
       nextPlan: "평균대 끝 지점 한 발 서기 3초 도전 및 1.5m 거리 표적 맞히기 연계 진행",
       adminChecked: false,
@@ -542,7 +560,7 @@ export default function Home() {
   const [isStorageLoaded, setIsStorageLoaded] = useState<boolean>(false);
   const backupFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 1. 핵심 마스터 데이터 상태 (SSR 프리렌더링 안전을 위해 new Date() 미사용)
+  // 1. 핵심 마스터 데이터 상태
   const [users, setUsers] = useState<UserAccount[]>(INITIAL_USERS);
   const [students, setStudents] = useState<Student[]>(INITIAL_STUDENTS);
   const [categories, setCategories] = useState<ClassCategory[]>(INITIAL_CATEGORIES);
@@ -568,7 +586,7 @@ export default function Home() {
     | "accounts"
   >("timetable");
 
-  // 3. 실제 달력 주간 상태 (고정 초기값 세팅 후 마운트 시 실제 오늘 주간으로 동기화)
+  // 3. 실제 달력 주간 상태
   const [currentMonday, setCurrentMonday] = useState<Date>(() => new Date(2026, 10, 23));
   const [historyMonday, setHistoryMonday] = useState<Date>(() => new Date(2026, 10, 23));
   const [reviewMonday, setReviewMonday] = useState<Date>(() => new Date(2026, 10, 23));
@@ -594,7 +612,7 @@ export default function Home() {
   const [adminFeedbackDrafts, setAdminFeedbackDrafts] = useState<Record<string, string>>({});
   const [reviewSaveMsg, setReviewSaveMsg] = useState<string>("");
 
-  // 주간 업무 지시(달력 날짜 선택 → 자동 주차 변환) 및 선생님 팝업 상태
+  // 주간 업무 지시(달력 날짜 선택 → 자동 주차 변환) 및 상세 팝업 상태
   const [taskDateInput, setTaskDateInput] = useState<string>("2026-11-24");
   const [taskTitleInput, setTaskTitleInput] = useState<string>("");
   const [taskDetailInput, setTaskDetailInput] = useState<string>("");
@@ -631,7 +649,7 @@ export default function Home() {
   const [studentShortGoalInput, setStudentShortGoalInput] = useState<string>("");
   const [studentMessage, setStudentMessage] = useState<string>("");
 
-  // 관리자 전용: 수업 종류 및 색상 관리 상태
+  // 관리자 전용: 수업 종류 및 색상 관리 상태 (10색 팔레트)
   const [newCategoryName, setNewCategoryName] = useState<string>("");
   const [newCategoryColorKey, setNewCategoryColorKey] = useState<ColorKey>("sky");
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
@@ -749,6 +767,18 @@ export default function Home() {
       setIsStorageLoaded(true);
     }
   }, []);
+
+  // ESC 키로 주간 업무 팝업 닫기
+  useEffect(() => {
+    if (!popupTaskId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setPopupTaskId(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [popupTaskId]);
 
   // 데이터 변경 시 localStorage 자동 동기화
   useEffect(() => {
@@ -888,7 +918,10 @@ export default function Home() {
   };
 
   const weekKey = formatDateKey(currentMonday);
-  const weekRangeLabel = `${currentMonday.getFullYear()}년 ${formatShortDate(currentMonday, 0)} (월) ~ ${formatShortDate(currentMonday, 5)} (토)`;
+  const weekRangeLabel = `${currentMonday.getFullYear()}년 ${formatShortDate(
+    currentMonday,
+    0
+  )} (월) ~ ${formatShortDate(currentMonday, 5)} (토)`;
 
   const getCategoryById = (catId: string) => categories.find((c) => c.id === catId);
   const getCategoryName = (catId: string) => getCategoryById(catId)?.name || "미지정";
@@ -1104,7 +1137,11 @@ export default function Home() {
   };
 
   // --- 관리자 전용: 시간표 셀 배정/수정 모달 ---
-  const handleOpenAdminModal = (day: DayOfWeek, period: number, existingSlot?: TimetableSlot) => {
+  const handleOpenAdminModal = (
+    day: DayOfWeek,
+    period: number,
+    existingSlot?: TimetableSlot
+  ) => {
     setEditingCell({ day, period, existingSlot });
     if (existingSlot) {
       setModalCategoryId(existingSlot.categoryId || categories[0]?.id || "");
@@ -1257,7 +1294,7 @@ export default function Home() {
     setTimeout(() => setStudentMessage(""), 3500);
   };
 
-  // --- 관리자 전용: 수업 종류 추가/수정/삭제 핸들러 ---
+  // --- 관리자 전용: 수업 종류 추가/수정/삭제 핸들러 (10색 선택) ---
   const handleAddCategory = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = newCategoryName.trim();
@@ -1266,15 +1303,25 @@ export default function Home() {
       setCategoryMessage("⚠️ 이미 등록된 수업 종류입니다.");
       return;
     }
+    const chosenColor = newCategoryColorKey;
+    const chosenColorLabel =
+      COLOR_PALETTE.find((c) => c.key === chosenColor)?.label || chosenColor;
+
     setCategories((prev) => [
       ...prev,
-      { id: `cat-${Date.now()}`, name: trimmed, colorKey: newCategoryColorKey },
+      { id: `cat-${Date.now()}`, name: trimmed, colorKey: chosenColor },
     ]);
     setNewCategoryName("");
-    const nextColor =
-      COLOR_PALETTE[(categories.length + 1) % COLOR_PALETTE.length]?.key || "sky";
-    setNewCategoryColorKey(nextColor);
-    setCategoryMessage(`✅ '${trimmed}' 수업 종류가 추가되었습니다.`);
+
+    // 아직 쓰이지 않은 색상이 있으면 다음 기본 선택 색상을 추천
+    const usedKeys = new Set(categories.map((c) => getThemeByColorKey(c.colorKey, c.name).key));
+    usedKeys.add(chosenColor);
+    const unusedColor = COLOR_PALETTE.find((item) => !usedKeys.has(item.key));
+    if (unusedColor) {
+      setNewCategoryColorKey(unusedColor.key);
+    }
+
+    setCategoryMessage(`✅ '${trimmed}' (${chosenColorLabel}) 수업 종류가 추가되었습니다.`);
     setTimeout(() => setCategoryMessage(""), 3000);
   };
 
@@ -1299,7 +1346,9 @@ export default function Home() {
     }
     const isInUse = timetable.some((slot) => slot.categoryId === cat.id);
     if (isInUse) {
-      setCategoryMessage(`⚠️ '${cat.name}' 수업이 현재 시간표에 배정되어 있어 삭제할 수 없습니다.`);
+      setCategoryMessage(
+        `⚠️ '${cat.name}' 수업이 현재 시간표에 배정되어 있어 삭제할 수 없습니다.`
+      );
       return;
     }
     setCategories((prev) => prev.filter((c) => c.id !== cat.id));
@@ -1360,7 +1409,7 @@ export default function Home() {
       if (remaining[0]) setAdminTargetTeacherId(remaining[0].id);
     }
     setAccountMessage(`🗑️ '${teacher.name}' 계정이 삭제되었습니다.`);
-    setTimeout(() => setAccountMessage(""), 3000);
+    setTimeout(() => setAccountMessage(""), 3500);
   };
 
   if (!isStorageLoaded) {
@@ -1436,16 +1485,16 @@ export default function Home() {
           <div className="mt-6 pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-1.5">
             <div className="flex items-center justify-between">
               <p className="font-bold text-slate-600">💡 계정 및 저장 안내:</p>
-              <span className="text-[11px] font-semibold text-emerald-600">
-          
-              </span>
             </div>
             <div className="flex justify-between bg-slate-50 px-3 py-1.5 rounded-lg">
               <span>관리자</span>
               <span className="font-mono font-bold text-slate-700">admin / 1234</span>
             </div>
             {teachersOnly.map((t) => (
-              <div key={t.id} className="flex justify-between bg-slate-50 px-3 py-1.5 rounded-lg">
+              <div
+                key={t.id}
+                className="flex justify-between bg-slate-50 px-3 py-1.5 rounded-lg"
+              >
                 <span>{t.name}</span>
                 <span className="font-mono font-bold text-slate-700">
                   {t.loginId} / {t.password}
@@ -1467,7 +1516,6 @@ export default function Home() {
           className="text-lg font-bold text-slate-800 hover:text-blue-600 transition"
         >
           사이언스 특수체육 수성센터
-      
         </button>
 
         <span
@@ -1638,7 +1686,7 @@ export default function Home() {
     });
 
     const selectedPopupTask = popupTaskId
-      ? visibleTasksForTeacher.find((t) => t.id === popupTaskId) || null
+      ? weeklyTasks.find((t) => t.id === popupTaskId) || null
       : null;
 
     const previewWeekInfo = getWeekInfoFromDateString(taskDateInput);
@@ -1736,11 +1784,11 @@ export default function Home() {
                       </span>
                     </div>
                     <textarea
-                      rows={8}
+                      rows={9}
                       value={taskDetailInput}
                       onChange={(e) => setTaskDetailInput(e.target.value)}
                       placeholder={`선생님들께 전달할 세부 지시 내용이나 마감 일정을 여유롭게 입력하세요.\n\n예시)\n1. 주간 IEP 일지 작성 마감: 금요일 17시\n2. 수중/PT 교구 소독 및 정리 상태 점검\n3. 특이사항 발생 시 즉시 관리자 공유`}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm text-slate-800 leading-relaxed resize-y min-h-[180px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm text-slate-800 leading-relaxed resize-y min-h-[220px] focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
@@ -1759,7 +1807,7 @@ export default function Home() {
                     📋 누적 등록된 주간 업무 및 선생님별 확인 현황 ({weeklyTasks.length}건)
                   </h3>
                   <span className="text-[11px] text-slate-400">
-                    등록된 선생님 {teachersOnly.length}명 기준
+                    항목 클릭 시 상세 팝업 열람 · 등록 선생님 {teachersOnly.length}명 기준
                   </span>
                 </div>
 
@@ -1778,7 +1826,16 @@ export default function Home() {
                       return (
                         <div
                           key={task.id}
-                          className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3"
+                          onClick={() => setPopupTaskId(task.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setPopupTaskId(task.id);
+                            }
+                          }}
+                          className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-300 transition cursor-pointer space-y-3"
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -1803,7 +1860,10 @@ export default function Home() {
 
                             <button
                               type="button"
-                              onClick={() => handleDeleteWeeklyTask(task.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteWeeklyTask(task.id);
+                              }}
                               className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-lg transition"
                             >
                               삭제
@@ -1836,7 +1896,7 @@ export default function Home() {
                             </div>
                           </div>
 
-                          <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed bg-white p-3 rounded-lg border border-slate-200/80">
+                          <p className="text-xs text-slate-600 whitespace-pre-line line-clamp-3 leading-relaxed bg-white p-3 rounded-lg border border-slate-200/80">
                             {task.detail}
                           </p>
                         </div>
@@ -1942,8 +2002,8 @@ export default function Home() {
           )}
         </main>
 
-        {/* 선생님 전용: 주간 업무 상세 팝업 모달 */}
-        {currentUser.role === "teacher" && selectedPopupTask && (
+        {/* 주간 업무 상세 팝업 모달 (선생님 & 관리자 공통) */}
+        {selectedPopupTask && (
           <div
             className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
             onClick={() => setPopupTaskId(null)}
@@ -1961,7 +2021,9 @@ export default function Home() {
                     <span className="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">
                       대상: {selectedPopupTask.assignee}
                     </span>
-                    <span className="text-slate-400">등록일: {selectedPopupTask.createdAt}</span>
+                    <span className="text-slate-400">
+                      등록일: {selectedPopupTask.createdAt}
+                    </span>
                   </div>
                   <h3 className="text-xl font-bold text-slate-900">
                     {selectedPopupTask.title}
@@ -1983,17 +2045,37 @@ export default function Home() {
               </div>
 
               <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-                <label className="inline-flex items-center gap-2 text-xs font-extrabold text-slate-800 cursor-pointer select-none bg-emerald-50 px-3.5 py-2 rounded-xl border border-emerald-200">
-                  <input
-                    type="checkbox"
-                    checked={isTaskCheckedByTeacher(selectedPopupTask, currentUser.id)}
-                    onChange={() =>
-                      handleToggleWeeklyTaskChecked(selectedPopupTask.id, currentUser.id)
-                    }
-                    className="w-4 h-4 accent-emerald-600"
-                  />
-                  <span>이 주간 업무 내용을 확인했습니다 (확인 완료)</span>
-                </label>
+                {currentUser.role === "teacher" ? (
+                  <label className="inline-flex items-center gap-2 text-xs font-extrabold text-slate-800 cursor-pointer select-none bg-emerald-50 px-3.5 py-2 rounded-xl border border-emerald-200">
+                    <input
+                      type="checkbox"
+                      checked={isTaskCheckedByTeacher(selectedPopupTask, currentUser.id)}
+                      onChange={() =>
+                        handleToggleWeeklyTaskChecked(selectedPopupTask.id, currentUser.id)
+                      }
+                      className="w-4 h-4 accent-emerald-600"
+                    />
+                    <span>이 주간 업무 내용을 확인했습니다 (확인 완료)</span>
+                  </label>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    {getTargetTeachersForTask(selectedPopupTask, teachersOnly).map((t) => {
+                      const done = isTaskCheckedByTeacher(selectedPopupTask, t.id);
+                      return (
+                        <span
+                          key={t.id}
+                          className={`px-2.5 py-1 rounded-lg font-bold border ${
+                            done
+                              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                              : "bg-amber-50 text-amber-800 border-amber-200"
+                          }`}
+                        >
+                          {t.name}: {done ? "확인" : "미확인"}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
 
                 <button
                   type="button"
@@ -2082,7 +2164,10 @@ export default function Home() {
       .sort((a, b) => b.exactDate.localeCompare(a.exactDate));
 
     const historyWeekKey = formatDateKey(historyMonday);
-    const historyWeekLabel = `${historyMonday.getFullYear()}년 ${formatShortDate(historyMonday, 0)} (월) ~ ${formatShortDate(historyMonday, 5)} (토)`;
+    const historyWeekLabel = `${historyMonday.getFullYear()}년 ${formatShortDate(
+      historyMonday,
+      0
+    )} (월) ~ ${formatShortDate(historyMonday, 5)} (토)`;
 
     const moveHistoryWeek = (weeks: number) => {
       const next = new Date(historyMonday);
@@ -2105,7 +2190,11 @@ export default function Home() {
                 📚 {currentUser.name} 담당 학생 누적 IEP & 출결 조회
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                개인정보 보호를 위해 <strong>{currentUser.name} 시간표에 배정된 학생({myAssignedStudents.length}명)</strong>의 기록만 표시됩니다.
+                개인정보 보호를 위해{" "}
+                <strong>
+                  {currentUser.name} 시간표에 배정된 학생({myAssignedStudents.length}명)
+                </strong>
+                의 기록만 표시됩니다.
               </p>
             </div>
 
@@ -2602,7 +2691,9 @@ export default function Home() {
                                     className="w-full p-4 flex flex-wrap items-center justify-between gap-2 text-left"
                                   >
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <span className="text-base">{isExpanded ? "📂" : "📄"}</span>
+                                      <span className="text-base">
+                                        {isExpanded ? "📂" : "📄"}
+                                      </span>
                                       <span className="font-bold text-sm text-slate-800">
                                         {item.exactDate} ({item.dayPeriod}) ·
                                       </span>
@@ -2659,7 +2750,9 @@ export default function Home() {
                                         <span className="font-bold text-indigo-700 block mb-1">
                                           1. 금주 세부 목표
                                         </span>
-                                        <p className="text-slate-800">{item.record.sessionGoal || "-"}</p>
+                                        <p className="text-slate-800">
+                                          {item.record.sessionGoal || "-"}
+                                        </p>
                                       </div>
                                       <div className="bg-white p-3.5 rounded-xl border border-slate-200">
                                         <span className="font-bold text-blue-700 block mb-1">
@@ -2699,7 +2792,8 @@ export default function Home() {
 
                     <div className="hidden print:block space-y-3 pt-2">
                       <h4 className="text-sm font-extrabold text-slate-900 border-b border-slate-400 pb-1">
-                        회기별 개별화교육(IEP) 진행 및 수행 결과 내역 ({studentHistoryList.length}건)
+                        회기별 개별화교육(IEP) 진행 및 수행 결과 내역 (
+                        {studentHistoryList.length}건)
                       </h4>
                       {studentHistoryList.map((item) => (
                         <div
@@ -2794,7 +2888,10 @@ export default function Home() {
       .sort((a, b) => b.exactDate.localeCompare(a.exactDate));
 
     const reviewWeekKey = formatDateKey(reviewMonday);
-    const reviewWeekLabel = `${reviewMonday.getFullYear()}년 ${formatShortDate(reviewMonday, 0)} (월) ~ ${formatShortDate(reviewMonday, 5)} (토)`;
+    const reviewWeekLabel = `${reviewMonday.getFullYear()}년 ${formatShortDate(
+      reviewMonday,
+      0
+    )} (월) ~ ${formatShortDate(reviewMonday, 5)} (토)`;
 
     const moveReviewWeek = (weeks: number) => {
       const next = new Date(reviewMonday);
@@ -2990,7 +3087,8 @@ export default function Home() {
                 🕵️ 선생님별 누적 IEP 검토 및 관리자 피드백
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                선생님을 선택하면 <strong>주간 시간표</strong> 또는 <strong>누적 파일 목록</strong> 방식으로 IEP를 열람하고 피드백·확인 체크를 남길 수 있습니다.
+                선생님을 선택하면 <strong>주간 시간표</strong> 또는 <strong>누적 파일 목록</strong>{" "}
+                방식으로 IEP를 열람하고 피드백·확인 체크를 남길 수 있습니다.
               </p>
             </div>
             {reviewSaveMsg && (
@@ -3138,7 +3236,8 @@ export default function Home() {
             <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <span className="text-xs font-semibold text-slate-700">
-                  🗓️ <strong>{selectedTeacher?.name}</strong> 시간표 칸을 클릭하면 해당 주차 수업에 참여한 학생들의 IEP가 열립니다.
+                  🗓️ <strong>{selectedTeacher?.name}</strong> 시간표 칸을 클릭하면 해당 주차 수업에
+                  참여한 학생들의 IEP가 열립니다.
                 </span>
                 <div className="flex items-center gap-1.5">
                   <button
@@ -3305,8 +3404,8 @@ export default function Home() {
                     <h4 className="text-base font-bold text-slate-800">
                       📋 {getExactDateFromMondayKey(reviewWeekKey, selectedReviewSlot.day)} (
                       {selectedReviewSlot.day}
-                      {selectedReviewSlot.period} · {getCategoryName(selectedReviewSlot.categoryId)})
-                      수업 IEP 검토
+                      {selectedReviewSlot.period} ·{" "}
+                      {getCategoryName(selectedReviewSlot.categoryId)}) 수업 IEP 검토
                     </h4>
                     <button
                       type="button"
@@ -3347,7 +3446,8 @@ export default function Home() {
                             className="p-5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-500 flex items-center justify-between"
                           >
                             <span>
-                              <strong>{st?.name}</strong> 학생은 해당 주차에 아직 작성된 IEP 내용이 없습니다.
+                              <strong>{st?.name}</strong> 학생은 해당 주차에 아직 작성된 IEP
+                              내용이 없습니다.
                             </span>
                             {att && (
                               <span
@@ -3418,7 +3518,8 @@ export default function Home() {
                             {item.categoryName}
                           </span>
                           <span className="font-bold text-sm text-slate-800">
-                            · <span className="text-indigo-700">{item.student?.name}</span> IEP 일지
+                            · <span className="text-indigo-700">{item.student?.name}</span> IEP
+                            일지
                           </span>
                           {item.attendance && (
                             <span
@@ -3506,7 +3607,8 @@ export default function Home() {
             <div>
               <h2 className="text-xl font-bold text-slate-800">🎓 학생 명단 및 기초·목표 관리</h2>
               <p className="text-xs text-slate-500 mt-1">
-                관리자가 작성한 <strong>초기 상담 내용</strong>은 선생님에게 공유되며, 선생님이 수정한 <strong>현재 상태 및 목표</strong>도 이곳에서 바로 확인됩니다.
+                관리자가 작성한 <strong>초기 상담 내용</strong>은 선생님에게 공유되며, 선생님이
+                수정한 <strong>현재 상태 및 목표</strong>도 이곳에서 바로 확인됩니다.
               </p>
             </div>
             {studentMessage && (
@@ -3774,6 +3876,10 @@ export default function Home() {
   // [관리자 전용 페이지 2] 수업 종류 및 색상 관리 화면 (10색 팔레트 선택 지원)
   // ============================================================================
   if (currentUser.role === "admin" && activePage === "categories") {
+    const usedColorKeys = new Set(
+      categories.map((cat) => getThemeByColorKey(cat.colorKey, cat.name).key)
+    );
+
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
         {renderHeader()}
@@ -3783,7 +3889,8 @@ export default function Home() {
             <div>
               <h2 className="text-xl font-bold text-slate-800">🏷️ 수업 종류 및 색상 관리</h2>
               <p className="text-xs text-slate-500 mt-1">
-                수업 종류를 추가하거나 수정할 때 <strong>10가지 색상</strong> 중 원하는 색상을 직접 선택할 수 있습니다. (검정·흰색 제외)
+                수업 종류를 추가하거나 수정할 때 <strong>10가지 색상</strong> 중 원하는 색상을
+                직접 선택할 수 있습니다. (검정·흰색 제외)
               </p>
             </div>
             {categoryMessage && (
@@ -3815,12 +3922,19 @@ export default function Home() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-2">
-                    색상 선택 (10가지)
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold text-slate-700">
+                      색상 선택 (10가지)
+                    </label>
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      선택:{" "}
+                      {COLOR_PALETTE.find((c) => c.key === newCategoryColorKey)?.label || ""}
+                    </span>
+                  </div>
                   <div className="grid grid-cols-5 gap-2">
                     {COLOR_PALETTE.map((colorItem) => {
                       const selected = newCategoryColorKey === colorItem.key;
+                      const isAlreadyUsed = usedColorKeys.has(colorItem.key);
                       return (
                         <button
                           type="button"
@@ -3835,6 +3949,9 @@ export default function Home() {
                           <span className={`w-5 h-5 rounded-full ${colorItem.swatch}`} />
                           <span className="text-[10px] font-bold text-slate-700">
                             {colorItem.label}
+                          </span>
+                          <span className="text-[9px] text-slate-400">
+                            {isAlreadyUsed ? "사용중" : "여유"}
                           </span>
                         </button>
                       );
@@ -3866,6 +3983,10 @@ export default function Home() {
                   const usedCount = timetable.filter((s) => s.categoryId === cat.id).length;
                   const isEditing = editingCategoryId === cat.id;
                   const theme = getThemeByColorKey(cat.colorKey, cat.name);
+                  const previewEditingTheme = getThemeByColorKey(
+                    editingCategoryColorKey,
+                    editingCategoryName || cat.name
+                  );
 
                   return (
                     <div
@@ -3874,12 +3995,17 @@ export default function Home() {
                     >
                       {isEditing ? (
                         <div className="space-y-3">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`px-2.5 py-1 rounded-lg border text-xs font-extrabold ${previewEditingTheme.pill}`}
+                            >
+                              {editingCategoryName.trim() || cat.name}
+                            </span>
                             <input
                               type="text"
                               value={editingCategoryName}
                               onChange={(e) => setEditingCategoryName(e.target.value)}
-                              className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-800"
+                              className="flex-1 min-w-[160px] px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-800"
                             />
                             <button
                               type="button"
@@ -4007,7 +4133,9 @@ export default function Home() {
         <main className="flex-1 max-w-5xl w-full mx-auto p-6 space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-slate-800">👤 선생님 계정 발급 및 비밀번호 관리</h2>
+              <h2 className="text-xl font-bold text-slate-800">
+                👤 선생님 계정 발급 및 비밀번호 관리
+              </h2>
               <p className="text-xs text-slate-500 mt-1">
                 선생님별 로그인 아이디와 비밀번호를 생성·수정할 수 있습니다.
               </p>
@@ -4094,17 +4222,21 @@ export default function Home() {
                     >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-base text-slate-800">{teacher.name}</span>
+                          <span className="font-bold text-base text-slate-800">
+                            {teacher.name}
+                          </span>
                           <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">
                             배정 수업 {assignedCount}개
                           </span>
                         </div>
                         <div className="text-xs text-slate-600 flex items-center gap-3">
                           <span>
-                            아이디: <strong className="font-mono text-slate-900">{teacher.loginId}</strong>
+                            아이디:{" "}
+                            <strong className="font-mono text-slate-900">{teacher.loginId}</strong>
                           </span>
                           <span>
-                            비밀번호: <strong className="font-mono text-slate-900">{teacher.password}</strong>
+                            비밀번호:{" "}
+                            <strong className="font-mono text-slate-900">{teacher.password}</strong>
                           </span>
                         </div>
                       </div>
@@ -4229,7 +4361,9 @@ export default function Home() {
         )
       );
       setIsEditingGoalsAndStatus(false);
-      setProfileSaveMsg("✅ 현재 상태 및 장기·단기목표가 자동 저장되어 관리자에게도 반영되었습니다.");
+      setProfileSaveMsg(
+        "✅ 현재 상태 및 장기·단기목표가 자동 저장되어 관리자에게도 반영되었습니다."
+      );
       setTimeout(() => setProfileSaveMsg(""), 3500);
     };
 
@@ -4267,7 +4401,8 @@ export default function Home() {
                 ← 시간표
               </button>
               <span className="px-2.5 py-1 bg-slate-800 text-white text-xs font-extrabold rounded-md">
-                {exactClassDate} ({selectedSlot.day}{selectedSlot.period})
+                {exactClassDate} ({selectedSlot.day}
+                {selectedSlot.period})
               </span>
               <span
                 className={`px-2.5 py-1 text-xs font-extrabold rounded-md border ${categoryTheme.pill}`}
@@ -4300,9 +4435,7 @@ export default function Home() {
               <h3 className="text-xs font-bold text-slate-700">
                 👥 참여 학생 선택 및 금일 출결 체크 (클릭 시 아래 책 인덱스에서 즉시 작성)
               </h3>
-              <span className="text-[11px] text-slate-400">
-                실시간 자동 저장됨
-              </span>
+              <span className="text-[11px] text-slate-400">실시간 자동 저장됨</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -4706,7 +4839,8 @@ export default function Home() {
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <h4 className="text-base font-bold text-slate-800">
-                        ✏️ {exactClassDate} ({selectedSlot.day}{selectedSlot.period} ·
+                        ✏️ {exactClassDate} ({selectedSlot.day}
+                        {selectedSlot.period} ·
                       </h4>
                       <span
                         className={`px-2.5 py-0.5 text-xs font-extrabold rounded-md border ${categoryTheme.pill}`}
@@ -4842,7 +4976,8 @@ export default function Home() {
                       ⏭️ 다음 차시 수업 간단 계획 ({selectedStudent.name})
                     </h4>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      방금 기록한 <strong>오늘 수업 내용과 아이의 반응</strong>을 바탕으로 다음 주 수업을 간단히 계획해 두세요.
+                      방금 기록한 <strong>오늘 수업 내용과 아이의 반응</strong>을 바탕으로 다음 주
+                      수업을 간단히 계획해 두세요.
                     </p>
                   </div>
 
@@ -4919,7 +5054,8 @@ export default function Home() {
                 관리자 시간표 편성
               </span>
               <span className="text-sm text-slate-200">
-                선생님을 선택하고 시간표 칸의 <strong>[+]</strong> 또는 <strong>[편집]</strong>을 눌러 수업 종류와 학생을 배정하세요.
+                선생님을 선택하고 시간표 칸의 <strong>[+]</strong> 또는 <strong>[편집]</strong>을
+                눌러 수업 종류와 학생을 배정하세요.
               </span>
             </div>
 
@@ -5046,7 +5182,8 @@ export default function Home() {
                                   <span
                                     className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded shrink-0 ${theme.badge}`}
                                   >
-                                    {day}{period}
+                                    {day}
+                                    {period}
                                   </span>
                                   <span
                                     className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border truncate ${theme.pill}`}
@@ -5086,8 +5223,7 @@ export default function Home() {
                                 <div className="text-[11px] text-slate-600 truncate mt-0.5">
                                   {slot.studentIds
                                     .map(
-                                      (id) =>
-                                        students.find((st) => st.id === id)?.name || ""
+                                      (id) => students.find((st) => st.id === id)?.name || ""
                                     )
                                     .filter(Boolean)
                                     .join(", ")}
@@ -5128,7 +5264,8 @@ export default function Home() {
               <div>
                 <span className="text-xs font-bold text-blue-600">{activeTeacher?.name}</span>
                 <h3 className="text-lg font-bold text-slate-800">
-                  {editingCell.day}요일 {editingCell.period}교시 ({editingCell.day}{editingCell.period}) 수업 설정
+                  {editingCell.day}요일 {editingCell.period}교시 ({editingCell.day}
+                  {editingCell.period}) 수업 설정
                 </h3>
               </div>
               <button
@@ -5241,14 +5378,25 @@ export default function Home() {
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span>{isChecked ? "✓ " : ""}{st.name}</span>
+                          <span>
+                            {isChecked ? "✓ " : ""}
+                            {st.name}
+                          </span>
                           {age !== null && (
-                            <span className={`text-[10px] ${isChecked ? "text-blue-100" : "text-slate-500"}`}>
+                            <span
+                              className={`text-[10px] ${
+                                isChecked ? "text-blue-100" : "text-slate-500"
+                              }`}
+                            >
                               만 {age}세
                             </span>
                           )}
                         </div>
-                        <div className={`text-[10px] mt-0.5 truncate ${isChecked ? "text-blue-100" : "text-slate-400"}`}>
+                        <div
+                          className={`text-[10px] mt-0.5 truncate ${
+                            isChecked ? "text-blue-100" : "text-slate-400"
+                          }`}
+                        >
                           {st.schoolGradeClass || st.birthDate}
                         </div>
                       </button>
