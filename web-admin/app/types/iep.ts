@@ -12,7 +12,8 @@ export type ActivePage =
   | "weeklyTasks"
   | "students"
   | "categories"
-  | "accounts";
+  | "accounts"
+  | "attendanceBook";
 
 export type ColorKey =
   | "cyan"

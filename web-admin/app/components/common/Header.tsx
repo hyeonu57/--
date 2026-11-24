@@ -69,6 +69,18 @@ export default function Header({
           </button>
 
           <button
+            type="button"
+            onClick={() => onNavigate("attendanceBook")}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              activePage === "attendanceBook"
+                ? "bg-blue-600 text-white"
+                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+            }`}
+          >
+           📅 학생별 출석부
+          </button>
+
+          <button
             onClick={() => onNavigate("weeklyTasks")}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5 ${
               activePage === "weeklyTasks"

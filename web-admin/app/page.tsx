@@ -9,6 +9,7 @@ import {
   AdminStudentsView,
 } from "./components/admin/AdminManagementViews";
 import AdminWeeklyTasks from "./components/admin/AdminWeeklyTasks";
+import AttendanceBookView from "./components/common/AttendanceBookView";
 import ConfirmModal from "./components/common/ConfirmModal";
 import Header from "./components/common/Header";
 import MakeupScheduleModal, {
@@ -193,6 +194,7 @@ export default function Home() {
               "students",
               "categories",
               "accounts",
+              "attendanceBook",
             ].includes(savedSessionPage)
           ) {
             setActivePage(savedSessionPage as ActivePage);
@@ -902,6 +904,21 @@ export default function Home() {
             }
           />
         ))}
+
+      {activePage === "attendanceBook" && (
+  <AttendanceBookView
+    currentUser={currentUser}
+    students={students}
+    timetable={timetable}
+    attendanceRecords={attendanceRecords}
+    categories={categories}
+    users={users}
+    onSetAttendance={(recordKey, status) =>
+      setAttendanceRecords((prev) => ({ ...prev, [recordKey]: status }))
+    }
+  />
+)}
+
 
       {currentUser.role === "teacher" && activePage === "teacherHistory" && (
         <TeacherStudentHistory
