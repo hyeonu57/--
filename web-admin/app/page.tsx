@@ -33,22 +33,30 @@ const STORAGE_KEYS = {
   ATTENDANCE: "iep_portal_attendance_v2",
   WEEKLY_TASKS: "iep_portal_weekly_tasks_v2",
   MAKEUP_NOTIFICATIONS: "iep_portal_makeup_notifications_v2",
+  MIDDLE_TEMPLATES: "iep_portal_middle_templates_v2",
   SESSION_USER: "iep_portal_session_user_v2",
   SESSION_PAGE: "iep_portal_session_page_v2",
 };
 
-// 기본 루틴(상/하) 및 중(본시수업) 개별 템플릿 상수
 const BASIC_ROUTINE_TOP =
   "관절 가동성 및 가벼운 스트레칭(5분) 진행, 오늘 활동 순서 안내 및 동기유발";
 const BASIC_ROUTINE_BOTTOM =
   "호흡 조절 및 전신 이완 스트레칭(5분), 오늘 활동 소감 나누기 및 긍정 피드백";
 
-const MIDDLE_ACTIVITY_TEMPLATES: { label: string; text: string }[] = [
+interface ActivityTemplateItem {
+  id: string;
+  label: string;
+  text: string;
+}
+
+const DEFAULT_MIDDLE_TEMPLATES: ActivityTemplateItem[] = [
   {
+    id: "tpl-mid-1",
     label: "균형·협응 순환 활동",
     text: "평균대 보행 → 콘 터치 → 표적 던지기 순환 코스(3회 반복)",
   },
   {
+    id: "tpl-mid-2",
     label: "수중 적응·부력 활동",
     text: "입수 후 호흡 연습, 수중 걷기 및 발차기, 부력 기구 활용 균형 유지",
   },
@@ -105,14 +113,16 @@ interface TimetableSlot {
   isMakeupSlot?: boolean;
   makeupForDate?: string;
   makeupWeekKey?: string;
+  makeupOriginRecordKey?: string;
+  makeupNotificationId?: string;
 }
 
 interface IEPRecord {
   sessionGoal: string;
-  activityTop?: string; // 상 - 준비운동 및 동기유발
-  activityMiddle?: string; // 중 - 본시수업
-  activityBottom?: string; // 하 - 마무리 운동 및 금일 피드백
-  activityContent: string; // 전체 조합 텍스트(하위 호환 및 누적 조회용)
+  activityTop?: string;
+  activityMiddle?: string;
+  activityBottom?: string;
+  activityContent: string;
   supportStrategy: string;
   evaluation: string;
   progressStatus?: GoalProgressStatus;
@@ -133,6 +143,7 @@ interface MakeupNotification {
   makeupDate: string;
   makeupDay: DayOfWeek;
   makeupPeriod: number;
+  makeupSlotId?: string;
   createdAt: string;
   acknowledgedByAdmin: boolean;
 }
@@ -466,7 +477,7 @@ function parseDateStringToLocal(dateStr: string): Date | null {
 function getDayOfWeekFromDateString(dateStr: string): DayOfWeek {
   const d = parseDateStringToLocal(dateStr);
   if (!d) return "토";
-  const jsDay = d.getDay(); // 0:일, 1:월 ... 6:토
+  const jsDay = d.getDay();
   if (jsDay === 0) return "토";
   return DAYS[jsDay - 1] || "토";
 }
@@ -664,6 +675,9 @@ export default function Home() {
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, AttendanceStatus>>({});
   const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTask[]>([]);
   const [makeupNotifications, setMakeupNotifications] = useState<MakeupNotification[]>([]);
+  const [middleTemplates, setMiddleTemplates] = useState<ActivityTemplateItem[]>(
+    DEFAULT_MIDDLE_TEMPLATES
+  );
 
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [loginIdInput, setLoginIdInput] = useState<string>("");
@@ -690,15 +704,22 @@ export default function Home() {
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [iepIndexTab, setIepIndexTab] = useState<IepBookTab>("today");
 
-  // [보강 날짜 선택 팝업 상태]
+  // [2번 보강 디테일: 신규 생성 및 기존 보강 슬롯 수정/취소 공용 모달 상태]
   const [makeupModalData, setMakeupModalData] = useState<{
+    mode: "create" | "edit";
     student: Student;
     slot: TimetableSlot;
     originalDate: string;
+    editingMakeupSlot?: TimetableSlot;
   } | null>(null);
   const [makeupDateInput, setMakeupDateInput] = useState<string>("");
   const [makeupPeriodInput, setMakeupPeriodInput] = useState<number>(1);
   const [makeupDetailInput, setMakeupDetailInput] = useState<string>("");
+
+  // [3번 중(본시수업) 템플릿 관리 모달 상태]
+  const [isTemplateManagerOpen, setIsTemplateManagerOpen] = useState<boolean>(false);
+  const [newTplLabelInput, setNewTplLabelInput] = useState<string>("");
+  const [newTplTextInput, setNewTplTextInput] = useState<string>("");
 
   const [historyStudentId, setHistoryStudentId] = useState<string>("");
   const [historyViewMode, setHistoryViewMode] = useState<"timetable" | "files">("timetable");
@@ -779,6 +800,7 @@ export default function Home() {
       const savedAttendance = localStorage.getItem(STORAGE_KEYS.ATTENDANCE);
       const savedWeeklyTasks = localStorage.getItem(STORAGE_KEYS.WEEKLY_TASKS);
       const savedMakeupNotis = localStorage.getItem(STORAGE_KEYS.MAKEUP_NOTIFICATIONS);
+      const savedMiddleTemplates = localStorage.getItem(STORAGE_KEYS.MIDDLE_TEMPLATES);
 
       const parsedUsers: UserAccount[] = savedUsers ? JSON.parse(savedUsers) : INITIAL_USERS;
       const parsedTeachers = parsedUsers.filter((u) => u.role === "teacher");
@@ -823,6 +845,10 @@ export default function Home() {
 
       if (savedMakeupNotis) {
         setMakeupNotifications(JSON.parse(savedMakeupNotis));
+      }
+
+      if (savedMiddleTemplates) {
+        setMiddleTemplates(JSON.parse(savedMiddleTemplates));
       }
 
       const savedSessionUser = sessionStorage.getItem(STORAGE_KEYS.SESSION_USER);
@@ -922,6 +948,11 @@ export default function Home() {
   }, [makeupNotifications, isStorageLoaded]);
 
   useEffect(() => {
+    if (!isStorageLoaded) return;
+    localStorage.setItem(STORAGE_KEYS.MIDDLE_TEMPLATES, JSON.stringify(middleTemplates));
+  }, [middleTemplates, isStorageLoaded]);
+
+  useEffect(() => {
     if (!isStorageLoaded || !currentUser) return;
     sessionStorage.setItem(STORAGE_KEYS.SESSION_PAGE, activePage);
   }, [activePage, currentUser, isStorageLoaded]);
@@ -929,7 +960,7 @@ export default function Home() {
   const handleExportBackupJson = () => {
     const backupPayload = {
       exportedAt: new Date().toISOString(),
-      version: "2.0",
+      version: "2.1",
       users,
       students,
       categories,
@@ -938,6 +969,7 @@ export default function Home() {
       attendanceRecords,
       weeklyTasks,
       makeupNotifications,
+      middleTemplates,
     };
 
     const blob = new Blob([JSON.stringify(backupPayload, null, 2)], {
@@ -981,6 +1013,9 @@ export default function Home() {
         if (parsed.makeupNotifications) {
           setMakeupNotifications(parsed.makeupNotifications);
         }
+        if (parsed.middleTemplates) {
+          setMiddleTemplates(parsed.middleTemplates);
+        }
 
         alert("✅ 백업 파일에서 모든 데이터가 성공적으로 복원되었습니다!");
       } catch {
@@ -1003,7 +1038,6 @@ export default function Home() {
     0
   )} (월) ~ ${formatShortDate(currentMonday, 5)} (토)`;
 
-  // 해당 주차에 유효한 시간표 칸 (보강 슬롯은 지정된 주차에만 노출)
   const isSlotActiveInWeek = (slot: TimetableSlot, targetWeekKey: string) => {
     if (!slot.isMakeupSlot) return true;
     return slot.makeupWeekKey === targetWeekKey;
@@ -1055,16 +1089,29 @@ export default function Home() {
     return getThemeByColorKey(undefined, catIdOrName);
   };
 
+  // [2번 보강 출결 정밀 집계: 정규 결석 vs 보강 수업 출석/보강]
   const getStudentAttendanceStats = (studentId: string) => {
     let present = 0;
     let absent = 0;
     let makeup = 0;
 
     Object.entries(attendanceRecords).forEach(([key, status]) => {
-      if (key.endsWith(`_${studentId}`)) {
+      if (!key.endsWith(`_${studentId}`)) return;
+      const [, slotId] = key.split("_");
+      const slot = timetable.find((s) => s.id === slotId);
+
+      if (slot?.isMakeupSlot) {
+        // 보강 슬롯에서 출석 또는 보강으로 체크된 경우 보강 이행으로 집계
+        if (status === "출석" || status === "보강") {
+          makeup++;
+        }
+      } else {
         if (status === "출석") present++;
         else if (status === "결석") absent++;
-        else if (status === "보강") makeup++;
+        else if (status === "보강") {
+          // 기존 수업 칸이 보강 처리된 경우 결석 1건에 대해 보강이 잡힌 것으로 처리
+          absent++;
+        }
       }
     });
 
@@ -1072,7 +1119,6 @@ export default function Home() {
     return { present, absent, makeup, pendingMakeup, total: present + absent + makeup };
   };
 
-  // [관리자 모드] 선택된 선생님 기준 주간 요약 대시보드 지표 계산
   const selectedTeacherSummary = (() => {
     const targetTeacherId = activeTeacher?.id || "";
     const teacherWeekSlots = timetable.filter(
@@ -1164,8 +1210,8 @@ export default function Home() {
     return pastSessions[0] || null;
   };
 
-  // [보강 날짜 선택 팝업 열기 & 확정]
-  const openMakeupPopup = (
+  // [2번 보강 날짜 선택 팝업 열기: 신규 등록 & 기존 보강 슬롯 수정 겸용]
+  const openCreateMakeupPopup = (
     student: Student,
     slot: TimetableSlot,
     originalDate: string
@@ -1175,15 +1221,59 @@ export default function Home() {
     suggested.setDate(baseDate.getDate() + 3);
     setMakeupDateInput(formatDateKey(suggested));
     setMakeupPeriodInput(slot.period);
-    setMakeupDetailInput(slot.detailTitle ? `${slot.detailTitle} (보강)` : `${student.name} 보강 수업`);
-    setMakeupModalData({ student, slot, originalDate });
+    setMakeupDetailInput(
+      slot.detailTitle ? `${slot.detailTitle} (보강)` : `${student.name} 보강 수업`
+    );
+    setMakeupModalData({ mode: "create", student, slot, originalDate });
+  };
+
+  const openEditMakeupPopup = (makeupSlot: TimetableSlot) => {
+    const stId = makeupSlot.studentIds[0];
+    const student = students.find((s) => s.id === stId);
+    if (!student) return;
+    const scheduledDate = makeupSlot.makeupWeekKey
+      ? getExactDateFromMondayKey(makeupSlot.makeupWeekKey, makeupSlot.day)
+      : formatDateKey(new Date());
+
+    setMakeupDateInput(scheduledDate);
+    setMakeupPeriodInput(makeupSlot.period);
+    setMakeupDetailInput(makeupSlot.detailTitle || `${student.name} 보강 수업`);
+    setMakeupModalData({
+      mode: "edit",
+      student,
+      slot: makeupSlot,
+      originalDate: makeupSlot.makeupForDate || scheduledDate,
+      editingMakeupSlot: makeupSlot,
+    });
+  };
+
+  // [2번 보강 일정 중복 확인 헬퍼]
+  const checkMakeupScheduleConflict = (
+    teacherId: string,
+    targetDateStr: string,
+    targetPeriod: number,
+    ignoreSlotId?: string
+  ): TimetableSlot | undefined => {
+    const parsed = parseDateStringToLocal(targetDateStr);
+    if (!parsed) return undefined;
+    const targetDay = getDayOfWeekFromDateString(targetDateStr);
+    const targetWeekKey = formatDateKey(getMonday(parsed));
+
+    return timetable.find(
+      (s) =>
+        s.id !== ignoreSlotId &&
+        s.teacherId === teacherId &&
+        s.day === targetDay &&
+        s.period === targetPeriod &&
+        isSlotActiveInWeek(s, targetWeekKey)
+    );
   };
 
   const handleConfirmMakeupSchedule = (e: React.FormEvent) => {
     e.preventDefault();
     if (!makeupModalData || !makeupDateInput) return;
 
-    const { student, slot, originalDate } = makeupModalData;
+    const { mode, student, slot, originalDate, editingMakeupSlot } = makeupModalData;
     const parsedMakeupDate = parseDateStringToLocal(makeupDateInput);
     if (!parsedMakeupDate) return;
 
@@ -1191,15 +1281,64 @@ export default function Home() {
     const makeupMonday = getMonday(parsedMakeupDate);
     const makeupWeekKey = formatDateKey(makeupMonday);
 
-    // 1. 기존 수업 칸 출결을 '보강'으로 표시
+    if (mode === "edit" && editingMakeupSlot) {
+      const oldAttKey = `${editingMakeupSlot.makeupWeekKey}_${editingMakeupSlot.id}_${student.id}`;
+      const newAttKey = `${makeupWeekKey}_${editingMakeupSlot.id}_${student.id}`;
+
+      setTimetable((prev) =>
+        prev.map((s) =>
+          s.id === editingMakeupSlot.id
+            ? {
+                ...s,
+                day: makeupDay,
+                period: makeupPeriodInput,
+                detailTitle: makeupDetailInput.trim() || `${student.name} 보강`,
+                makeupWeekKey,
+              }
+            : s
+        )
+      );
+
+      setAttendanceRecords((prev) => {
+        const next = { ...prev };
+        const prevVal = next[oldAttKey] || "보강";
+        delete next[oldAttKey];
+        next[newAttKey] = prevVal;
+        return next;
+      });
+
+      setMakeupNotifications((prev) =>
+        prev.map((n) =>
+          n.id === editingMakeupSlot.makeupNotificationId ||
+          n.makeupSlotId === editingMakeupSlot.id
+            ? {
+                ...n,
+                makeupDate: makeupDateInput,
+                makeupDay,
+                makeupPeriod: makeupPeriodInput,
+                acknowledgedByAdmin: false,
+              }
+            : n
+        )
+      );
+
+      setMakeupModalData(null);
+      setSaveMessage(
+        `✅ ${student.name} 보강 일정이 ${makeupDateInput} (${makeupDay}${makeupPeriodInput})로 변경되었습니다.`
+      );
+      setTimeout(() => setSaveMessage(""), 4500);
+      return;
+    }
+
+    // 신규 보강 생성
     const originRecordKey = `${weekKey}_${slot.id}_${student.id}`;
     setAttendanceRecords((prev) => ({
       ...prev,
       [originRecordKey]: "보강",
     }));
 
-    // 2. 보강 날짜 주간 시간표에 보강 수업 슬롯 추가
     const makeupSlotId = `makeup-${Date.now()}`;
+    const notiId = `mnoti-${Date.now()}`;
     const newMakeupSlot: TimetableSlot = {
       id: makeupSlotId,
       teacherId: slot.teacherId,
@@ -1211,6 +1350,8 @@ export default function Home() {
       isMakeupSlot: true,
       makeupForDate: originalDate,
       makeupWeekKey,
+      makeupOriginRecordKey: originRecordKey,
+      makeupNotificationId: notiId,
     };
 
     setTimetable((prev) => [...prev, newMakeupSlot]);
@@ -1219,10 +1360,9 @@ export default function Home() {
       [`${makeupWeekKey}_${makeupSlotId}_${student.id}`]: "보강",
     }));
 
-    // 3. 관리자 알림 등록
     const teacherObj = teachersOnly.find((t) => t.id === slot.teacherId);
     const newNoti: MakeupNotification = {
-      id: `mnoti-${Date.now()}`,
+      id: notiId,
       teacherId: slot.teacherId,
       teacherName: teacherObj?.name || currentUser?.name || "담당 교사",
       studentId: student.id,
@@ -1232,6 +1372,7 @@ export default function Home() {
       makeupDate: makeupDateInput,
       makeupDay,
       makeupPeriod: makeupPeriodInput,
+      makeupSlotId,
       createdAt: formatDateKey(new Date()),
       acknowledgedByAdmin: false,
     };
@@ -1244,10 +1385,72 @@ export default function Home() {
     setTimeout(() => setSaveMessage(""), 4500);
   };
 
+  // [2번 보강 일정 취소 핸들러]
+  const handleCancelMakeupSchedule = () => {
+    if (!makeupModalData || makeupModalData.mode !== "edit" || !makeupModalData.editingMakeupSlot) {
+      return;
+    }
+    const targetSlot = makeupModalData.editingMakeupSlot;
+    const stId = targetSlot.studentIds[0];
+
+    // 1. 보강 슬롯 제거
+    setTimetable((prev) => prev.filter((s) => s.id !== targetSlot.id));
+
+    // 2. 보강 슬롯 출결 키 삭제 및 원래 결석 칸을 '결석'으로 되돌림
+    setAttendanceRecords((prev) => {
+      const next = { ...prev };
+      if (targetSlot.makeupWeekKey && stId) {
+        delete next[`${targetSlot.makeupWeekKey}_${targetSlot.id}_${stId}`];
+      }
+      if (targetSlot.makeupOriginRecordKey) {
+        next[targetSlot.makeupOriginRecordKey] = "결석";
+      }
+      return next;
+    });
+
+    // 3. 연결된 관리자 보강 알림 제거
+    setMakeupNotifications((prev) =>
+      prev.filter(
+        (n) =>
+          n.id !== targetSlot.makeupNotificationId && n.makeupSlotId !== targetSlot.id
+      )
+    );
+
+    if (selectedSlotId === targetSlot.id) {
+      setSelectedSlotId(null);
+      setActivePage("timetable");
+    }
+
+    setMakeupModalData(null);
+    setSaveMessage(
+      `🗑️ ${makeupModalData.student.name} 보강 일정이 취소되어 원래 수업이 결석 상태로 복원되었습니다.`
+    );
+    setTimeout(() => setSaveMessage(""), 4500);
+  };
+
   const handleAcknowledgeMakeupNotification = (notiId: string) => {
     setMakeupNotifications((prev) =>
       prev.map((n) => (n.id === notiId ? { ...n, acknowledgedByAdmin: true } : n))
     );
+  };
+
+  // [3번 중(본시수업) 템플릿 추가/삭제]
+  const handleAddMiddleTemplate = (e: React.FormEvent) => {
+    e.preventDefault();
+    const label = newTplLabelInput.trim();
+    const text = newTplTextInput.trim();
+    if (!label || !text) return;
+
+    setMiddleTemplates((prev) => [
+      ...prev,
+      { id: `tpl-mid-${Date.now()}`, label, text },
+    ]);
+    setNewTplLabelInput("");
+    setNewTplTextInput("");
+  };
+
+  const handleDeleteMiddleTemplate = (tplId: string) => {
+    setMiddleTemplates((prev) => prev.filter((t) => t.id !== tplId));
   };
 
   const handleAddWeeklyTask = (e: React.FormEvent) => {
@@ -1667,6 +1870,145 @@ export default function Home() {
     }
     setAccountMessage(`🗑️ '${teacher.name}' 계정이 삭제되었습니다.`);
     setTimeout(() => setAccountMessage(""), 3500);
+  };
+
+  // [보강 모달 렌더링 헬퍼 - 시간표/상세 화면 공통]
+  const renderMakeupScheduleModal = () => {
+    if (!makeupModalData) return null;
+    const conflictSlot = makeupDateInput
+      ? checkMakeupScheduleConflict(
+          makeupModalData.slot.teacherId,
+          makeupDateInput,
+          makeupPeriodInput,
+          makeupModalData.editingMakeupSlot?.id
+        )
+      : undefined;
+
+    return (
+      <div
+        className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+        onClick={() => setMakeupModalData(null)}
+      >
+        <div
+          className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <span className="text-xs font-extrabold text-amber-600">
+                {makeupModalData.mode === "edit" ? "보강 일정 수정 · 취소" : "보강 일정 배정"}
+              </span>
+              <h3 className="text-lg font-bold text-slate-800">
+                {makeupModalData.student.name} 보강 날짜 선택
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMakeupModalData(null)}
+              className="text-slate-400 hover:text-slate-700 text-lg font-bold"
+            >
+              ✕
+            </button>
+          </div>
+
+          <form onSubmit={handleConfirmMakeupSchedule} className="space-y-4">
+            <div className="text-xs bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-900">
+              기준 결석일: <strong>{makeupModalData.originalDate}</strong> ·{" "}
+              <strong>{getCategoryName(makeupModalData.slot.categoryId)}</strong>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  보강 날짜 <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={makeupDateInput}
+                  onChange={(e) => setMakeupDateInput(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">보강 교시</label>
+                <select
+                  value={makeupPeriodInput}
+                  onChange={(e) => setMakeupPeriodInput(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm bg-white"
+                >
+                  {PERIODS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}교시
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {conflictSlot && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-0.5">
+                <p className="font-extrabold">
+                  ⚠️ 해당 시간({getDayOfWeekFromDateString(makeupDateInput)}요일{" "}
+                  {makeupPeriodInput}교시)에 기존 수업이 있습니다!
+                </p>
+                <p>
+                  기존 수업: {getCategoryName(conflictSlot.categoryId)} (
+                  {conflictSlot.studentIds
+                    .map((id) => students.find((s) => s.id === id)?.name || "")
+                    .join(", ")}
+                  ) — 다른 교시를 선택하시는 것을 권장합니다.
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                보강 수업 메모
+              </label>
+              <input
+                type="text"
+                value={makeupDetailInput}
+                onChange={(e) => setMakeupDetailInput(e.target.value)}
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm"
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-2">
+              {makeupModalData.mode === "edit" ? (
+                <button
+                  type="button"
+                  onClick={handleCancelMakeupSchedule}
+                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl"
+                >
+                  보강 취소
+                </button>
+              ) : (
+                <div />
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMakeupModalData(null)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl"
+                >
+                  닫기
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl"
+                >
+                  {makeupModalData.mode === "edit"
+                    ? "보강 일정 변경 저장"
+                    : "시간표 반영 및 관리자 알림"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
   };
 
   if (!isStorageLoaded) {
@@ -2194,7 +2536,7 @@ export default function Home() {
   }
 
   // ============================================================================
-  // [선생님 전용 페이지] 담당 학생 누적 IEP & 출결 조회
+  // [선생님 전용 페이지] 담당 학생 누적 IEP & 출결 조회 + 상담/인쇄 요약
   // ============================================================================
   if (currentUser.role === "teacher" && activePage === "teacherHistory") {
     const myAssignedStudents = getAssignedStudentsForTeacher(currentUser.id);
@@ -2297,7 +2639,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="px-4 py-2.5 bg-slate-800 text-white text-xs font-bold rounded-xl"
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl"
               >
                 🖨️ {targetStudent.name} 상담 보고서 인쇄 / PDF
               </button>
@@ -2355,13 +2697,28 @@ export default function Home() {
             <section className="lg:col-span-8 space-y-5">
               {targetStudent && (
                 <>
-                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-3">
+                  {/* [3번 상담·인쇄용 학생 요약 카드] */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-3 print:border-slate-400">
+                    <div className="hidden print:block text-center border-b border-slate-300 pb-3 mb-3">
+                      <h1 className="text-lg font-extrabold text-slate-900">
+                        사이언스 특수체육센터 개별화 교육(IEP) 상담 보고서
+                      </h1>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        담당 교사: {currentUser.name} · 출력일: {formatDateKey(new Date())}
+                      </p>
+                    </div>
+
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                       <div className="flex items-center gap-2">
                         <h3 className="text-xl font-bold text-slate-800">{targetStudent.name}</h3>
                         {targetAge !== null && (
                           <span className="px-2.5 py-1 rounded-full bg-blue-600 text-white text-xs font-bold">
                             만 {targetAge}세
+                          </span>
+                        )}
+                        {targetStudent.schoolGradeClass && (
+                          <span className="text-xs text-slate-500 font-semibold">
+                            ({targetStudent.schoolGradeClass})
                           </span>
                         )}
                         <span className="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-rose-50 text-rose-700 border border-rose-200">
@@ -2396,6 +2753,66 @@ export default function Home() {
                     </div>
                   </div>
 
+                  {/* [3번 상담·인쇄용 회기별 요약 목록 (인쇄 시 자동 펼쳐짐)] */}
+                  <div className="hidden print:block space-y-3">
+                    <h4 className="text-sm font-extrabold text-slate-800 border-b border-slate-300 pb-1.5">
+                      회기별 IEP 수업 및 평가 기록 ({studentHistoryList.length}건)
+                    </h4>
+                    {studentHistoryList.map((item) => {
+                      const sec = parseActivitySections(item.record);
+                      return (
+                        <div
+                          key={item.key}
+                          className="p-4 rounded-xl border border-slate-300 text-xs space-y-2 break-inside-avoid"
+                        >
+                          <div className="flex items-center justify-between font-bold border-b border-slate-200 pb-1.5">
+                            <span>
+                              {item.exactDate} ({item.dayPeriod}) · {item.categoryName}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {item.attendance && <span>출결: {item.attendance}</span>}
+                              {item.record.progressStatus && (
+                                <span>진전도: {item.record.progressStatus}</span>
+                              )}
+                            </div>
+                          </div>
+                          <p>
+                            <strong>세부 목표:</strong> {item.record.sessionGoal || "-"}
+                          </p>
+                          {sec.top || sec.bottom ? (
+                            <div className="space-y-1 bg-slate-50 p-2.5 rounded-lg">
+                              <p>
+                                <strong>[상] 준비·동기유발:</strong> {sec.top || "-"}
+                              </p>
+                              <p>
+                                <strong>[중] 본시수업:</strong> {sec.middle || "-"}
+                              </p>
+                              <p>
+                                <strong>[하] 마무리·피드백:</strong> {sec.bottom || "-"}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap">
+                              <strong>활동 내용:</strong> {item.record.activityContent || "-"}
+                            </p>
+                          )}
+                          <p>
+                            <strong>지원 전략:</strong> {item.record.supportStrategy || "-"}
+                          </p>
+                          <p>
+                            <strong>수행 결과:</strong> {item.record.evaluation || "-"}
+                          </p>
+                          {item.record.adminFeedback && (
+                            <p className="text-emerald-900 bg-emerald-50 p-2 rounded">
+                              <strong>관리자 피드백:</strong> {item.record.adminFeedback}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* 화면용 누적 기록 탭 (시간표 / 누적 목록) */}
                   <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4 print:hidden">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                       <h4 className="text-base font-bold text-slate-800">
@@ -2422,7 +2839,7 @@ export default function Home() {
                               : "text-slate-600"
                           }`}
                         >
-                          누적 ({studentHistoryList.length})
+                          누적 요약 ({studentHistoryList.length})
                         </button>
                       </div>
                     </div>
@@ -2534,7 +2951,8 @@ export default function Home() {
                               </button>
                             </div>
                             <p>
-                              <strong>목표:</strong> {iepRecords[selectedHistoryKey].sessionGoal || "-"}
+                              <strong>목표:</strong>{" "}
+                              {iepRecords[selectedHistoryKey].sessionGoal || "-"}
                             </p>
                             <p className="whitespace-pre-wrap">
                               <strong>활동:</strong>{" "}
@@ -2545,8 +2963,15 @@ export default function Home() {
                               {iepRecords[selectedHistoryKey].supportStrategy || "-"}
                             </p>
                             <p className="whitespace-pre-wrap">
-                              <strong>결과:</strong> {iepRecords[selectedHistoryKey].evaluation || "-"}
+                              <strong>결과:</strong>{" "}
+                              {iepRecords[selectedHistoryKey].evaluation || "-"}
                             </p>
+                            {iepRecords[selectedHistoryKey].adminFeedback && (
+                              <p className="bg-emerald-50 border border-emerald-200 p-2 rounded-lg text-emerald-900">
+                                <strong>관리자 피드백:</strong>{" "}
+                                {iepRecords[selectedHistoryKey].adminFeedback}
+                              </p>
+                            )}
                           </div>
                         )}
                       </div>
@@ -2554,6 +2979,7 @@ export default function Home() {
                       <div className="space-y-3">
                         {studentHistoryList.map((item) => {
                           const isExpanded = activeDetailItem?.key === item.key;
+                          const sec = parseActivitySections(item.record);
                           return (
                             <div
                               key={item.key}
@@ -2564,29 +2990,79 @@ export default function Home() {
                                 onClick={() =>
                                   setSelectedHistoryKey(isExpanded ? null : item.key)
                                 }
-                                className="w-full p-4 flex items-center justify-between text-left"
+                                className="w-full p-4 flex flex-wrap items-center justify-between gap-2 text-left"
                               >
-                                <span className="font-bold text-sm text-slate-800">
-                                  {item.exactDate} ({item.dayPeriod}) · {item.categoryName} IEP
-                                </span>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-bold text-sm text-slate-800">
+                                    {item.exactDate} ({item.dayPeriod}) · {item.categoryName} IEP
+                                  </span>
+                                  {item.attendance && (
+                                    <span
+                                      className={`px-2 py-0.5 text-[11px] font-bold rounded border ${getAttendanceBadgeStyle(
+                                        item.attendance
+                                      )}`}
+                                    >
+                                      {item.attendance}
+                                    </span>
+                                  )}
+                                  {item.record.progressStatus && (
+                                    <span
+                                      className={`px-2 py-0.5 text-[11px] font-bold rounded border ${getProgressBadgeStyle(
+                                        item.record.progressStatus
+                                      )}`}
+                                    >
+                                      {getProgressEmoji(item.record.progressStatus)}{" "}
+                                      {item.record.progressStatus}
+                                    </span>
+                                  )}
+                                </div>
                                 <span className="text-xs font-bold text-indigo-600">
                                   {isExpanded ? "접기 ▲" : "열기 ▼"}
                                 </span>
                               </button>
                               {isExpanded && (
-                                <div className="px-4 pb-4 pt-2 border-t border-slate-200 text-xs space-y-1.5">
+                                <div className="px-4 pb-4 pt-2 border-t border-slate-200 text-xs space-y-2 bg-white">
                                   <p>
-                                    <strong>목표:</strong> {item.record.sessionGoal || "-"}
+                                    <strong>세부 목표:</strong> {item.record.sessionGoal || "-"}
+                                  </p>
+                                  {sec.top || sec.bottom ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                      <div className="p-2.5 rounded-lg bg-sky-50 border border-sky-200">
+                                        <span className="font-bold text-sky-900 block mb-0.5">
+                                          상 · 준비운동/동기유발
+                                        </span>
+                                        <p className="whitespace-pre-wrap">{sec.top || "-"}</p>
+                                      </div>
+                                      <div className="p-2.5 rounded-lg bg-indigo-50 border border-indigo-200">
+                                        <span className="font-bold text-indigo-900 block mb-0.5">
+                                          중 · 본시수업
+                                        </span>
+                                        <p className="whitespace-pre-wrap">{sec.middle || "-"}</p>
+                                      </div>
+                                      <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
+                                        <span className="font-bold text-emerald-900 block mb-0.5">
+                                          하 · 마무리/피드백
+                                        </span>
+                                        <p className="whitespace-pre-wrap">{sec.bottom || "-"}</p>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="whitespace-pre-wrap">
+                                      <strong>활동 내용:</strong> {item.record.activityContent || "-"}
+                                    </p>
+                                  )}
+                                  <p className="whitespace-pre-wrap">
+                                    <strong>지원 전략:</strong> {item.record.supportStrategy || "-"}
                                   </p>
                                   <p className="whitespace-pre-wrap">
-                                    <strong>활동:</strong> {item.record.activityContent || "-"}
+                                    <strong>수행 결과:</strong> {item.record.evaluation || "-"}
                                   </p>
-                                  <p className="whitespace-pre-wrap">
-                                    <strong>지원:</strong> {item.record.supportStrategy || "-"}
-                                  </p>
-                                  <p className="whitespace-pre-wrap">
-                                    <strong>결과:</strong> {item.record.evaluation || "-"}
-                                  </p>
+                                  {item.record.adminFeedback && (
+                                    <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950">
+                                      <strong>✍️ 관리자 피드백:</strong>{" "}
+                                      {item.record.adminFeedback}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -3714,7 +4190,7 @@ export default function Home() {
   }
 
   // ============================================================================
-  // [2페이지] 수업 상세 페이지 (상·중·하 IEP + 기본루틴/중 템플릿 + 보강 날짜 팝업)
+  // [2페이지] 수업 상세 페이지 (상·중·하 IEP + 중 템플릿 관리 + 보강 날짜 팝업)
   // ============================================================================
   if (activePage === "detail" && selectedSlotId) {
     const selectedSlot = timetable.find((s) => s.id === selectedSlotId);
@@ -3732,7 +4208,6 @@ export default function Home() {
     const selectedStudentAge = selectedStudent ? calculateAge(selectedStudent.birthDate) : null;
 
     const recordKey = `${weekKey}_${selectedSlot.id}_${selectedStudent?.id}`;
-    const currentAttendance = attendanceRecords[recordKey];
     const currentIEP: IEPRecord = iepRecords[recordKey] || {
       sessionGoal: "",
       activityTop: "",
@@ -3751,8 +4226,8 @@ export default function Home() {
       : null;
 
     const handleSelectAttendance = (student: Student, status: AttendanceStatus) => {
-      if (status === "보강") {
-        openMakeupPopup(student, selectedSlot, exactClassDate);
+      if (status === "보강" && !selectedSlot.isMakeupSlot) {
+        openCreateMakeupPopup(student, selectedSlot, exactClassDate);
         return;
       }
       const targetKey = `${weekKey}_${selectedSlot.id}_${student.id}`;
@@ -3821,7 +4296,6 @@ export default function Home() {
       setSaveMessage("");
     };
 
-    // 기본 루틴 누르면 상, 하에 자동 입력
     const handleApplyBasicRoutine = () => {
       const nextTop = activitySections.top.trim()
         ? `${activitySections.top.trim()}\n${BASIC_ROUTINE_TOP}`
@@ -3848,7 +4322,6 @@ export default function Home() {
       setTimeout(() => setSaveMessage(""), 3000);
     };
 
-    // 중(본시수업) 템플릿 삽입
     const handleInsertMiddleTemplate = (templateText: string) => {
       const nextMiddle = activitySections.middle.trim()
         ? `${activitySections.middle.trim()}\n${templateText}`
@@ -3939,6 +4412,15 @@ export default function Home() {
               {selectedSlot.detailTitle && (
                 <h2 className="text-base font-bold text-slate-800">{selectedSlot.detailTitle}</h2>
               )}
+              {selectedSlot.isMakeupSlot && (
+                <button
+                  type="button"
+                  onClick={() => openEditMakeupPopup(selectedSlot)}
+                  className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-extrabold rounded-lg"
+                >
+                  ✏️ 보강 일정 수정/취소
+                </button>
+              )}
             </div>
 
             {currentUser.role === "teacher" && selectedStudent && (
@@ -3954,7 +4436,10 @@ export default function Home() {
           <div className="bg-white rounded-2xl border border-slate-200 p-4 px-5 shadow-sm">
             <div className="flex items-center justify-between gap-2 mb-2.5">
               <h3 className="text-xs font-bold text-slate-700">
-                👥 참여 학생 선택 및 금일 출결 체크 (보강 클릭 시 날짜 팝업)
+                👥 참여 학생 선택 및 금일 출결 체크{" "}
+                {selectedSlot.isMakeupSlot
+                  ? "(보강 수업 완료 시 출석 또는 보강 체크)"
+                  : "(보강 클릭 시 날짜 팝업)"}
               </h3>
               <span className="text-[11px] text-slate-400">실시간 자동 저장됨</span>
             </div>
@@ -4184,7 +4669,9 @@ export default function Home() {
                         <span className="font-bold text-amber-900 block mb-1">
                           📌 지난 차시 다음 계획 ({previousSession.exactDate}):
                         </span>
-                        <p className="whitespace-pre-wrap">{previousSession.record.nextPlan || "-"}</p>
+                        <p className="whitespace-pre-wrap">
+                          {previousSession.record.nextPlan || "-"}
+                        </p>
                       </div>
                       <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
                         <span className="font-bold text-indigo-700 block mb-1">• 세부 목표</span>
@@ -4235,7 +4722,6 @@ export default function Home() {
                     />
                   </div>
 
-                  {/* [상 · 중 · 하] 세분화된 수업 활동 칸 */}
                   <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-xs font-extrabold text-slate-800">
@@ -4250,7 +4736,6 @@ export default function Home() {
                       </button>
                     </div>
 
-                    {/* 상 - 준비운동 및 동기유발 */}
                     <div>
                       <label className="block text-xs font-bold text-sky-800 mb-1">
                         상 - 준비운동 및 동기유발
@@ -4264,23 +4749,29 @@ export default function Home() {
                       />
                     </div>
 
-                    {/* 중 - 본시수업 + 개별 템플릿 칩 */}
                     <div>
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                         <label className="block text-xs font-bold text-indigo-800">
                           중 - 본시수업
                         </label>
                         <div className="flex flex-wrap items-center gap-1.5">
-                          {MIDDLE_ACTIVITY_TEMPLATES.map((tpl) => (
+                          {middleTemplates.map((tpl) => (
                             <button
                               type="button"
-                              key={tpl.label}
+                              key={tpl.id}
                               onClick={() => handleInsertMiddleTemplate(tpl.text)}
                               className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-lg text-[11px] font-bold transition"
                             >
                               + {tpl.label}
                             </button>
                           ))}
+                          <button
+                            type="button"
+                            onClick={() => setIsTemplateManagerOpen(true)}
+                            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[11px] font-bold transition"
+                          >
+                            ⚙️ 템플릿 관리
+                          </button>
                         </div>
                       </div>
                       <textarea
@@ -4292,7 +4783,6 @@ export default function Home() {
                       />
                     </div>
 
-                    {/* 하 - 마무리 운동 및 금일 피드백 */}
                     <div>
                       <label className="block text-xs font-bold text-emerald-800 mb-1">
                         하 - 마무리 운동 및 금일 피드백
@@ -4406,100 +4896,92 @@ export default function Home() {
           )}
         </main>
 
-        {/* [보강 날짜 선택 팝업 모달] */}
-        {makeupModalData && (
+        {/* [3번 중(본시수업) 템플릿 관리 모달] */}
+        {isTemplateManagerOpen && (
           <div
             className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
-            onClick={() => setMakeupModalData(null)}
+            onClick={() => setIsTemplateManagerOpen(false)}
           >
             <div
-              className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+              className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[88vh] flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div>
-                  <span className="text-xs font-extrabold text-amber-600">보강 일정 배정</span>
-                  <h3 className="text-lg font-bold text-slate-800">
-                    {makeupModalData.student.name} 보강 날짜 선택
-                  </h3>
-                </div>
+                <h3 className="text-base font-bold text-slate-800">
+                  ⚙️ 중(본시수업) 활동 템플릿 관리
+                </h3>
                 <button
                   type="button"
-                  onClick={() => setMakeupModalData(null)}
+                  onClick={() => setIsTemplateManagerOpen(false)}
                   className="text-slate-400 hover:text-slate-700 text-lg font-bold"
                 >
                   ✕
                 </button>
               </div>
 
-              <form onSubmit={handleConfirmMakeupSchedule} className="space-y-4">
-                <div className="text-xs bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-900">
-                  기준 수업: <strong>{makeupModalData.originalDate}</strong> ·{" "}
-                  <strong>{getCategoryName(makeupModalData.slot.categoryId)}</strong>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      보강 날짜 <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      value={makeupDateInput}
-                      onChange={(e) => setMakeupDateInput(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      보강 교시
-                    </label>
-                    <select
-                      value={makeupPeriodInput}
-                      onChange={(e) => setMakeupPeriodInput(Number(e.target.value))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm bg-white"
-                    >
-                      {PERIODS.map((p) => (
-                        <option key={p} value={p}>
-                          {p}교시
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    보강 수업 메모
-                  </label>
-                  <input
-                    type="text"
-                    value={makeupDetailInput}
-                    onChange={(e) => setMakeupDetailInput(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm"
-                  />
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setMakeupModalData(null)}
-                    className="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl"
-                  >
-                    취소
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl"
-                  >
-                    시간표 반영 및 관리자 알림
-                  </button>
-                </div>
+              <form onSubmit={handleAddMiddleTemplate} className="space-y-2.5 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <span className="text-xs font-extrabold text-slate-700 block">
+                  ➕ 새 본시수업 템플릿 추가
+                </span>
+                <input
+                  type="text"
+                  value={newTplLabelInput}
+                  onChange={(e) => setNewTplLabelInput(e.target.value)}
+                  placeholder="버튼 이름 (예: 상지 협응·던지기)"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs"
+                  required
+                />
+                <textarea
+                  rows={2}
+                  value={newTplTextInput}
+                  onChange={(e) => setNewTplTextInput(e.target.value)}
+                  placeholder="삽입될 본시수업 문구를 입력하세요."
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs"
+                  required
+                />
+                <button
+                  type="submit"
+                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg"
+                >
+                  템플릿 목록에 추가
+                </button>
               </form>
+
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                {middleTemplates.map((tpl) => (
+                  <div
+                    key={tpl.id}
+                    className="p-3 rounded-xl border border-slate-200 flex items-start justify-between gap-2 text-xs"
+                  >
+                    <div>
+                      <span className="font-extrabold text-indigo-800 block">{tpl.label}</span>
+                      <p className="text-slate-600 mt-0.5">{tpl.text}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMiddleTemplate(tpl.id)}
+                      className="px-2.5 py-1 bg-rose-50 text-rose-600 font-bold rounded-lg shrink-0"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsTemplateManagerOpen(false)}
+                  className="px-5 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl"
+                >
+                  완료
+                </button>
+              </div>
             </div>
           </div>
         )}
+
+        {renderMakeupScheduleModal()}
       </div>
     );
   }
@@ -4520,7 +5002,6 @@ export default function Home() {
 
         {currentUser.role === "admin" && (
           <>
-            {/* 1. 선생님 선택 칸을 가장 위로 배치 */}
             <div className="bg-slate-800 text-white rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-sm">
               <div className="flex items-center gap-3">
                 <span className="px-2.5 py-1 bg-amber-400 text-slate-900 text-xs font-extrabold rounded-md">
@@ -4549,7 +5030,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 2. 선생님 선택 밑에 위치: 선택된 선생님별 주간 수업·IEP 작성률·출결·업무 현황 */}
             <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
               <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
                 <span className="text-[11px] font-bold text-slate-400 block">
@@ -4625,7 +5105,6 @@ export default function Home() {
               </div>
             </section>
 
-            {/* [관리자 보강 반영 알림 박스] */}
             {unacknowledgedMakeupList.length > 0 && (
               <section className="bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -4790,7 +5269,18 @@ export default function Home() {
                                   )}
                                 </div>
 
-                                {currentUser.role === "admin" ? (
+                                {slot.isMakeupSlot ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openEditMakeupPopup(slot);
+                                    }}
+                                    className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-600 text-white hover:bg-amber-700 shrink-0"
+                                  >
+                                    보강수정
+                                  </button>
+                                ) : currentUser.role === "admin" ? (
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -4993,6 +5483,8 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {renderMakeupScheduleModal()}
     </div>
   );
 }
