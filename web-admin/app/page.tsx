@@ -60,6 +60,8 @@ import {
   resolveCategoryTheme,
 } from "./utils/iepHelpers";
 
+const STATIC_FALLBACK_MONDAY = new Date(2026, 10, 23);
+
 export default function Home() {
   const [isStorageLoaded, setIsStorageLoaded] = useState<boolean>(false);
 
@@ -81,7 +83,7 @@ export default function Home() {
   const [loginError, setLoginError] = useState<string>("");
 
   const [activePage, setActivePage] = useState<ActivePage>("timetable");
-  const [currentMonday, setCurrentMonday] = useState<Date>(() => getMonday(new Date()));
+  const [currentMonday, setCurrentMonday] = useState<Date>(STATIC_FALLBACK_MONDAY);
 
   const [adminTargetTeacherId, setAdminTargetTeacherId] = useState<string>("t-1");
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
@@ -110,7 +112,8 @@ export default function Home() {
 
   useEffect(() => {
     try {
-      const todayMon = getMonday(new Date());
+      const now = new Date();
+      const todayMon = getMonday(now);
       setCurrentMonday(todayMon);
 
       const savedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
@@ -145,7 +148,9 @@ export default function Home() {
       }
       if (savedTimetable) setTimetable(parsedTimetable);
 
-      setIepRecords(savedIepRecords ? JSON.parse(savedIepRecords) : createDefaultIEPRecords());
+      setIepRecords(
+        savedIepRecords ? JSON.parse(savedIepRecords) : createDefaultIEPRecords()
+      );
       setAttendanceRecords(
         savedAttendance ? JSON.parse(savedAttendance) : createDefaultAttendanceRecords()
       );
@@ -260,8 +265,9 @@ export default function Home() {
   };
 
   const handleExportBackupJson = () => {
+    const now = new Date();
     const backupPayload = {
-      exportedAt: new Date().toISOString(),
+      exportedAt: now.toISOString(),
       version: "2.2",
       users,
       students,
@@ -280,7 +286,7 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `IEP_통합백업_${formatDateKey(new Date())}.json`;
+    a.download = `IEP_통합백업_${formatDateKey(now)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -425,7 +431,7 @@ export default function Home() {
     slot: TimetableSlot,
     originalDate: string
   ) => {
-    const baseDate = parseDateStringToLocal(originalDate) || new Date();
+    const baseDate = parseDateStringToLocal(originalDate) || STATIC_FALLBACK_MONDAY;
     const suggested = new Date(baseDate);
     suggested.setDate(baseDate.getDate() + 3);
     setMakeupDateInput(formatDateKey(suggested));
@@ -442,7 +448,7 @@ export default function Home() {
     if (!student) return;
     const scheduledDate = makeupSlot.makeupWeekKey
       ? getExactDateFromMondayKey(makeupSlot.makeupWeekKey, makeupSlot.day)
-      : formatDateKey(new Date());
+      : formatDateKey(currentMonday);
 
     setMakeupDateInput(scheduledDate);
     setMakeupPeriodInput(makeupSlot.period);
@@ -579,7 +585,7 @@ export default function Home() {
       makeupDay,
       makeupPeriod: makeupPeriodInput,
       makeupSlotId,
-      createdAt: formatDateKey(new Date()),
+      createdAt: formatDateKey(currentMonday),
       acknowledgedByAdmin: false,
     };
 
@@ -592,7 +598,11 @@ export default function Home() {
   };
 
   const handleCancelMakeupSchedule = () => {
-    if (!makeupModalData || makeupModalData.mode !== "edit" || !makeupModalData.editingMakeupSlot) {
+    if (
+      !makeupModalData ||
+      makeupModalData.mode !== "edit" ||
+      !makeupModalData.editingMakeupSlot
+    ) {
       return;
     }
     const targetSlot = makeupModalData.editingMakeupSlot;
@@ -696,7 +706,8 @@ export default function Home() {
 
   const handleSaveTimetableSlot = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingCell || !modalCategoryId || modalStudentIds.length === 0 || !activeTeacher) return;
+    if (!editingCell || !modalCategoryId || modalStudentIds.length === 0 || !activeTeacher)
+      return;
 
     if (editingCell.existingSlot) {
       setTimetable((prev) =>
@@ -926,7 +937,7 @@ export default function Home() {
                   ...existing,
                   adminChecked: checked,
                   adminFeedback: feedback,
-                  adminCheckedAt: checked ? formatDateKey(new Date()) : undefined,
+                  adminCheckedAt: checked ? formatDateKey(currentMonday) : undefined,
                 },
               };
             });
