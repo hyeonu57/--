@@ -12,6 +12,7 @@ import {
   DayOfWeek,
   GoalProgressStatus,
   IEPRecord,
+  ManualMakeupItem,
   TimetableSlot,
   UserAccount,
   WeeklyTask,
@@ -188,6 +189,7 @@ export function computeStudentAttendanceStats(
   const makeupCount = Math.max(makeup, activeMakeupSlotsForStudent);
   const absentPending = Math.max(0, absent - makeupCount);
 
+  // 아직 시간표 보강 슬롯으로 배정되지 않은 수동 미보강 건수
   const unscheduledManualCount = manualMakeupItems.filter(
     (item) => item.studentId === studentId && !item.scheduledSlotId
   ).length;
@@ -202,31 +204,6 @@ export function computeStudentAttendanceStats(
     unscheduledManualCount,
     total: present + absent + makeupCount,
   };
-}
-
-  const activeMakeupSlotsForStudent = timetable.filter(
-    (s) => s.isMakeupSlot && s.studentIds.includes(studentId)
-  ).length;
-
-  const makeupCount = Math.max(makeup, activeMakeupSlotsForStudent);
-  const absentPending = Math.max(0, absent - makeupCount);
-
-  // 아직 시간표 보강 슬롯으로 배정되지 않은 수동 미보강 건수
-  const unscheduledManualCount = manualMakeupItems.filter(
-    (item) => item.studentId === studentId && !item.scheduledSlotId
-  ).length;
-
-  return {
-    present,
-    absent,
-    makeup: makeupCount,
-    pendingMakeup: absentPending + unscheduledManualCount,
-    unscheduledManualCount,
-  };
-}
-
-  const pendingMakeup = Math.max(0, absent - makeup);
-  return { present, absent, makeup, pendingMakeup, total: present + absent + makeup };
 }
 
 export function getTargetTeachersForTask(
