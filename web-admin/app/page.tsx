@@ -1506,6 +1506,7 @@ export default function Home() {
         detailInput={makeupDetailInput}
         conflictSlot={makeupConflictSlot}
         students={students}
+        timetable={timetable}
         getCategoryName={getCategoryName}
         onChangeDate={setMakeupDateInput}
         onChangePeriod={setMakeupPeriodInput}
