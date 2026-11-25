@@ -26,6 +26,8 @@ interface AttendanceBookViewProps {
   categories: ClassCategory[];
   users: UserAccount[];
   onSetAttendance: (recordKey: string, status: AttendanceStatus) => void;
+  onOpenCreateMakeup: (student: Student, slot: TimetableSlot, originalDate: string) => void;
+  onOpenEditMakeup: (makeupSlot: TimetableSlot) => void;
 }
 
 interface DaySessionItem {
@@ -54,8 +56,9 @@ export default function AttendanceBookView({
   categories,
   users,
   onSetAttendance,
+  onOpenCreateMakeup,
+  onOpenEditMakeup,
 }: AttendanceBookViewProps) {
-  // 선생님 모드면 본인 수업에 배정된 학생만 필터링
   const accessibleStudents = useMemo(() => {
     if (currentUser.role === "admin") return students;
     const assignedIds = new Set<string>();
@@ -67,9 +70,10 @@ export default function AttendanceBookView({
 
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [viewYear, setViewYear] = useState<number>(2026);
-  const [viewMonth, setViewMonth] = useState<number>(11); // 1 ~ 12
+  const [viewMonth, setViewMonth] = useState<number>(11);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
+  const [showAllStudentsSummary, setShowAllStudentsSummary] = useState<boolean>(false);
 
   useEffect(() => {
     const now = new Date();
@@ -105,11 +109,72 @@ export default function AttendanceBookView({
   const getTeacherName = (teacherId: string) =>
     users.find((u) => u.id === teacherId)?.name || "담당 교사";
 
-  // 해당 월의 달력 칸(일요일 시작 7열 그리드)과 날짜별 수업 매핑 계산
+  // 특정 학생·특정 연월의 출결 집계 헬퍼
+  const calcStudentMonthStats = (studentId: string, year: number, month: number) => {
+    const lastDay = new Date(year, month, 0).getDate();
+    let totalSessions = 0;
+    let presentCount = 0;
+    let absentCount = 0;
+    let makeupCount = 0;
+    let uncheckedCount = 0;
+
+    for (let d = 1; d <= lastDay; d++) {
+      const dateObj = new Date(year, month - 1, d);
+      const dayKor = DAY_INDEX_TO_KOREAN[dateObj.getDay()];
+      if (!dayKor || !DAYS.includes(dayKor)) continue;
+
+      const weekKey = formatDateKey(getMonday(dateObj));
+      const daySlots = timetable.filter(
+        (slot) =>
+          slot.day === dayKor &&
+          slot.studentIds.includes(studentId) &&
+          isSlotActiveInWeek(slot, weekKey)
+      );
+
+      daySlots.forEach((slot) => {
+        const recordKey = `${weekKey}_${slot.id}_${studentId}`;
+        const status = attendanceRecords[recordKey];
+        totalSessions++;
+        if (status === "출석") presentCount++;
+        else if (status === "결석") absentCount++;
+        else if (status === "보강") makeupCount++;
+        else uncheckedCount++;
+      });
+    }
+
+    const attendanceRate =
+      totalSessions > 0
+        ? Math.round(((presentCount + makeupCount) / totalSessions) * 100)
+        : 0;
+
+    return {
+      totalSessions,
+      presentCount,
+      absentCount,
+      makeupCount,
+      uncheckedCount,
+      attendanceRate,
+    };
+  };
+
+  // 전체 학생 월간 요약표 데이터
+  const allStudentsMonthRows = useMemo(() => {
+    return accessibleStudents.map((st) => {
+      const mStats = calcStudentMonthStats(st.id, viewYear, viewMonth);
+      const totalStats = computeStudentAttendanceStats(st.id, attendanceRecords, timetable);
+      return {
+        student: st,
+        ...mStats,
+        pendingMakeup: totalStats.pendingMakeup,
+      };
+    });
+  }, [accessibleStudents, viewYear, viewMonth, timetable, attendanceRecords]);
+
+  // 선택 학생의 월간 달력 셀과 요약
   const { calendarCells, monthSummary } = useMemo(() => {
     const firstDayOfMonth = new Date(viewYear, viewMonth - 1, 1);
     const lastDayOfMonth = new Date(viewYear, viewMonth, 0);
-    const startWeekday = firstDayOfMonth.getDay(); // 0(일) ~ 6(토)
+    const startWeekday = firstDayOfMonth.getDay();
     const totalDays = lastDayOfMonth.getDate();
 
     const cells: Array<{
@@ -123,17 +188,10 @@ export default function AttendanceBookView({
       cells.push({ date: null, dateKey: `empty-start-${i}`, dayNum: 0, sessions: [] });
     }
 
-    let totalSessions = 0;
-    let presentCount = 0;
-    let absentCount = 0;
-    let makeupCount = 0;
-    let uncheckedCount = 0;
-
     for (let d = 1; d <= totalDays; d++) {
       const dateObj = new Date(viewYear, viewMonth - 1, d);
       const dateKey = formatDateKey(dateObj);
-      const weekday = dateObj.getDay();
-      const dayKor = DAY_INDEX_TO_KOREAN[weekday];
+      const dayKor = DAY_INDEX_TO_KOREAN[dateObj.getDay()];
       const sessions: DaySessionItem[] = [];
 
       if (selectedStudent && dayKor && DAYS.includes(dayKor)) {
@@ -149,19 +207,12 @@ export default function AttendanceBookView({
 
         daySlots.forEach((slot) => {
           const recordKey = `${weekKey}_${slot.id}_${selectedStudent.id}`;
-          const status = attendanceRecords[recordKey];
-          totalSessions++;
-          if (status === "출석") presentCount++;
-          else if (status === "결석") absentCount++;
-          else if (status === "보강") makeupCount++;
-          else uncheckedCount++;
-
           sessions.push({
             recordKey,
             slot,
             categoryName: getCategoryName(slot.categoryId),
             teacherName: getTeacherName(slot.teacherId),
-            status,
+            status: attendanceRecords[recordKey],
           });
         });
       }
@@ -183,22 +234,18 @@ export default function AttendanceBookView({
       });
     }
 
-    const attendanceRate =
-      totalSessions > 0
-        ? Math.round(((presentCount + makeupCount) / totalSessions) * 100)
-        : 0;
+    const summary = selectedStudent
+      ? calcStudentMonthStats(selectedStudent.id, viewYear, viewMonth)
+      : {
+          totalSessions: 0,
+          presentCount: 0,
+          absentCount: 0,
+          makeupCount: 0,
+          uncheckedCount: 0,
+          attendanceRate: 0,
+        };
 
-    return {
-      calendarCells: cells,
-      monthSummary: {
-        totalSessions,
-        presentCount,
-        absentCount,
-        makeupCount,
-        uncheckedCount,
-        attendanceRate,
-      },
-    };
+    return { calendarCells: cells, monthSummary: summary };
   }, [viewYear, viewMonth, selectedStudent, timetable, attendanceRecords, categories, users]);
 
   const handlePrevMonth = () => {
@@ -236,33 +283,194 @@ export default function AttendanceBookView({
     ? computeStudentAttendanceStats(selectedStudent.id, attendanceRecords, timetable)
     : null;
 
+  // 원래 수업과 연결된 보강 슬롯 찾기
+  const findLinkedMakeupSlot = (recordKey: string) =>
+    timetable.find((s) => s.isMakeupSlot && s.makeupOriginRecordKey === recordKey);
+
+  // 보강 수업과 연결된 원래 수업 날짜 찾기
+  const getOriginDateLabel = (slot: TimetableSlot) => {
+    if (!slot.isMakeupSlot || !slot.makeupOriginRecordKey) return null;
+    const weekPart = slot.makeupOriginRecordKey.split("_")[0];
+    return `${weekPart} (${slot.makeupForDate || slot.day}요일 수업) 보강`;
+  };
+
   const getStatusChipStyle = (status?: AttendanceStatus) => {
-    if (status === "출석") {
-      return "bg-emerald-100 text-emerald-800 border-emerald-200";
-    }
-    if (status === "결석") {
-      return "bg-rose-100 text-rose-800 border-rose-200";
-    }
-    if (status === "보강") {
-      return "bg-amber-100 text-amber-800 border-amber-200";
-    }
+    if (status === "출석") return "bg-emerald-100 text-emerald-800 border-emerald-200";
+    if (status === "결석") return "bg-rose-100 text-rose-800 border-rose-200";
+    if (status === "보강") return "bg-amber-100 text-amber-800 border-amber-200";
     return "bg-slate-100 text-slate-500 border-slate-200";
   };
 
   return (
     <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-5">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* 왼쪽: 학생 선택 목록 */}
-        <aside className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col gap-3 h-fit">
-          <div>
-            <h2 className="text-base font-bold text-slate-800">📅 학생별 출석부</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {currentUser.role === "admin"
-                ? "전체 등록 학생의 월간 출결 달력"
-                : "담당 학생의 월간 출결 달력"}
-            </p>
+      {/* 상단 공통 월 선택 & 전체 학생 월간 요약표 토글 바 */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-extrabold text-slate-800">
+            📅 학생별 월간 출석부
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {currentUser.role === "admin"
+              ? "전체 학생 월간 출결 달력 · 전체 요약 비교 · 보강 일정 연동"
+              : "담당 학생 월간 출결 달력 · 요약 비교 · 보강 일정 연동"}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowAllStudentsSummary((prev) => !prev)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold border transition ${
+              showAllStudentsSummary
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
+            }`}
+          >
+            {showAllStudentsSummary
+              ? "📊 전체 학생 월간 요약표 닫기"
+              : "📊 전체 학생 월간 요약표 보기"}
+          </button>
+
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={handlePrevMonth}
+              className="px-2.5 py-1 bg-white text-slate-700 text-xs font-bold rounded-lg border border-slate-200"
+            >
+              ◀ 이전 달
+            </button>
+            <span className="px-2.5 text-xs sm:text-sm font-extrabold text-slate-800 min-w-[105px] text-center">
+              {viewYear}년 {viewMonth}월
+            </span>
+            <button
+              type="button"
+              onClick={handleNextMonth}
+              className="px-2.5 py-1 bg-white text-slate-700 text-xs font-bold rounded-lg border border-slate-200"
+            >
+              다음 달 ▶
+            </button>
+            <button
+              type="button"
+              onClick={handleJumpToday}
+              className="px-2.5 py-1 bg-blue-600 text-white text-xs font-bold rounded-lg"
+            >
+              이번 달
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 2번 기능: 전체 학생 월간 출결 요약표 */}
+      {showAllStudentsSummary && (
+        <section className="bg-white rounded-2xl border border-indigo-200 p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-800">
+                📊 {viewYear}년 {viewMonth}월 전체 학생 출결 요약표
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                행을 클릭하면 해당 학생의 월간 달력으로 바로 이동합니다.
+              </p>
+            </div>
+            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg">
+              총 {allStudentsMonthRows.length}명
+            </span>
           </div>
 
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-xs min-w-[680px]">
+              <thead>
+                <tr className="bg-slate-100 text-slate-700">
+                  <th className="p-2.5 border border-slate-200 text-left font-extrabold">
+                    학생명
+                  </th>
+                  <th className="p-2.5 border border-slate-200 text-left font-extrabold">
+                    학교·반 / 나이
+                  </th>
+                  <th className="p-2.5 border border-slate-200 text-center font-extrabold">
+                    이달 수업
+                  </th>
+                  <th className="p-2.5 border border-slate-200 text-center font-extrabold text-emerald-700">
+                    출석
+                  </th>
+                  <th className="p-2.5 border border-slate-200 text-center font-extrabold text-rose-700">
+                    결석
+                  </th>
+                  <th className="p-2.5 border border-slate-200 text-center font-extrabold text-amber-700">
+                    보강
+                  </th>
+                  <th className="p-2.5 border border-slate-200 text-center font-extrabold text-slate-500">
+                    미체크
+                  </th>
+                  <th className="p-2.5 border border-slate-200 text-center font-extrabold text-rose-600">
+                    미보강 잔여
+                  </th>
+                  <th className="p-2.5 border border-slate-200 text-center font-extrabold text-blue-700">
+                    이달 출석률
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {allStudentsMonthRows.map((row) => {
+                  const isCurrent = selectedStudent?.id === row.student.id;
+                  return (
+                    <tr
+                      key={row.student.id}
+                      onClick={() => {
+                        setSelectedStudentId(row.student.id);
+                        setSelectedDateKey(null);
+                        setShowAllStudentsSummary(false);
+                      }}
+                      className={`cursor-pointer transition ${
+                        isCurrent ? "bg-blue-50/80 font-bold" : "hover:bg-slate-50"
+                      }`}
+                    >
+                      <td className="p-2.5 border border-slate-200 font-extrabold text-slate-800">
+                        {row.student.name}
+                      </td>
+                      <td className="p-2.5 border border-slate-200 text-slate-600">
+                        {row.student.schoolGradeClass ||
+                          `만 ${calculateAge(row.student.birthDate)}세`}
+                      </td>
+                      <td className="p-2.5 border border-slate-200 text-center font-bold">
+                        {row.totalSessions}회
+                      </td>
+                      <td className="p-2.5 border border-slate-200 text-center font-extrabold text-emerald-700">
+                        {row.presentCount}회
+                      </td>
+                      <td className="p-2.5 border border-slate-200 text-center font-extrabold text-rose-700">
+                        {row.absentCount}회
+                      </td>
+                      <td className="p-2.5 border border-slate-200 text-center font-extrabold text-amber-700">
+                        {row.makeupCount}회
+                      </td>
+                      <td className="p-2.5 border border-slate-200 text-center text-slate-500">
+                        {row.uncheckedCount}회
+                      </td>
+                      <td className="p-2.5 border border-slate-200 text-center">
+                        {row.pendingMakeup > 0 ? (
+                          <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-extrabold text-[11px]">
+                            {row.pendingMakeup}회
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">0회</span>
+                        )}
+                      </td>
+                      <td className="p-2.5 border border-slate-200 text-center font-extrabold text-blue-700">
+                        {row.attendanceRate}%
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* 메인: 좌측 학생 선택 + 우측 월간 달력 & 보강 연동 패널 */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <aside className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col gap-3 h-fit">
           <input
             type="text"
             value={searchQuery}
@@ -326,7 +534,6 @@ export default function AttendanceBookView({
           </div>
         </aside>
 
-        {/* 오른쪽: 월간 달력 & 출결 요약 */}
         <section className="lg:col-span-9 space-y-4">
           {!selectedStudent ? (
             <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-sm text-slate-400">
@@ -334,12 +541,12 @@ export default function AttendanceBookView({
             </div>
           ) : (
             <>
-              {/* 학생 헤더 + 월 이동 컨트롤 */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
+              {/* 선택 학생 정보 & 누적 현황 */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-extrabold text-slate-800">
-                      {selectedStudent.name} 출석부
+                      {selectedStudent.name}
                     </h3>
                     <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
                       {selectedStudent.schoolGradeClass ||
@@ -352,33 +559,6 @@ export default function AttendanceBookView({
                       보강 {overallStats.makeup}회 (미보강 잔여 {overallStats.pendingMakeup}회)
                     </p>
                   )}
-                </div>
-
-                <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
-                  <button
-                    type="button"
-                    onClick={handlePrevMonth}
-                    className="px-3 py-1.5 bg-white text-slate-700 text-xs font-bold rounded-lg border border-slate-200"
-                  >
-                    ◀ 이전 달
-                  </button>
-                  <span className="px-3 text-sm font-extrabold text-slate-800 min-w-[115px] text-center">
-                    {viewYear}년 {viewMonth}월
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleNextMonth}
-                    className="px-3 py-1.5 bg-white text-slate-700 text-xs font-bold rounded-lg border border-slate-200"
-                  >
-                    다음 달 ▶
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleJumpToday}
-                    className="px-2.5 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg ml-1"
-                  >
-                    이번 달
-                  </button>
                 </div>
               </div>
 
@@ -416,11 +596,11 @@ export default function AttendanceBookView({
                 </div>
               </div>
 
-              {/* 월간 달력 본문 */}
+              {/* 월간 달력 */}
               <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                   <span className="text-xs font-bold text-slate-600">
-                    날짜 칸을 클릭하면 해당 날짜의 출결 상태를 바로 변경할 수 있습니다.
+                    날짜 칸을 클릭하면 출결 변경과 보강 일정 배정/수정을 바로 할 수 있습니다.
                   </span>
                   <div className="flex items-center gap-2 text-[11px] font-bold">
                     <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
@@ -508,6 +688,7 @@ export default function AttendanceBookView({
                                 item.status
                               )}`}
                             >
+                              {item.slot.isMakeupSlot ? "보강·" : ""}
                               {item.slot.period}교시 · {item.status || "미체크"}
                             </div>
                           ))}
@@ -518,13 +699,13 @@ export default function AttendanceBookView({
                 </div>
               </div>
 
-              {/* 선택한 날짜의 상세 출결 & 빠른 상태 변경 패널 */}
+              {/* 1번 기능: 선택 날짜 출결 변경 + 보강 일정 배정/수정/연결 표시 */}
               {selectedDayCell && (
                 <div className="bg-white rounded-2xl border border-blue-200 p-4 shadow-sm space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-extrabold text-slate-800">
-                      📌 {selectedDayCell.dateKey} ({WEEKDAY_HEADERS[selectedDayCell.date!.getDay()]}
-                      요일) 수업 출결 상세
+                      📌 {selectedDayCell.dateKey} (
+                      {WEEKDAY_HEADERS[selectedDayCell.date!.getDay()]}요일) 수업 출결 및 보강
                     </h4>
                     <button
                       type="button"
@@ -541,51 +722,102 @@ export default function AttendanceBookView({
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {selectedDayCell.sessions.map((item) => (
-                        <div
-                          key={item.recordKey}
-                          className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200"
-                        >
-                          <div>
-                            <div className="text-xs font-extrabold text-slate-800">
-                              {item.slot.period}교시 · {item.categoryName}
-                              {item.slot.isMakeupSlot && (
-                                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px]">
-                                  보강수업
-                                </span>
+                      {selectedDayCell.sessions.map((item) => {
+                        const linkedMakeup = findLinkedMakeupSlot(item.recordKey);
+                        const originLabel = getOriginDateLabel(item.slot);
+
+                        return (
+                          <div
+                            key={item.recordKey}
+                            className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200"
+                          >
+                            <div className="space-y-1">
+                              <div className="text-xs font-extrabold text-slate-800">
+                                {item.slot.period}교시 · {item.categoryName}
+                                {item.slot.isMakeupSlot && (
+                                  <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px]">
+                                    보강수업
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-500">
+                                담당: {item.teacherName}
+                                {item.slot.detailTitle ? ` · ${item.slot.detailTitle}` : ""}
+                              </div>
+
+                              {/* 보강 연결 상태 안내 */}
+                              {originLabel && (
+                                <div className="text-[11px] font-bold text-amber-700">
+                                  🔗 연결 정보: {originLabel}
+                                </div>
+                              )}
+                              {linkedMakeup && (
+                                <div className="text-[11px] font-bold text-blue-700">
+                                  🔗 연결된 보강: {linkedMakeup.makeupWeekKey || "예정"} (
+                                  {linkedMakeup.day}요일 {linkedMakeup.period}교시)
+                                </div>
                               )}
                             </div>
-                            <div className="text-[11px] text-slate-500 mt-0.5">
-                              담당: {item.teacherName}
-                              {item.slot.detailTitle ? ` · ${item.slot.detailTitle}` : ""}
+
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {(["출석", "결석", "보강"] as AttendanceStatus[]).map((st) => {
+                                const active = item.status === st;
+                                return (
+                                  <button
+                                    key={st}
+                                    type="button"
+                                    onClick={() => onSetAttendance(item.recordKey, st)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold border transition ${
+                                      active
+                                        ? st === "출석"
+                                          ? "bg-emerald-600 text-white border-emerald-600"
+                                          : st === "결석"
+                                          ? "bg-rose-600 text-white border-rose-600"
+                                          : "bg-amber-600 text-white border-amber-600"
+                                        : "bg-white text-slate-600 border-slate-300 hover:bg-slate-100"
+                                    }`}
+                                  >
+                                    {st}
+                                  </button>
+                                );
+                              })}
+
+                              {/* 보강 배정 / 수정 버튼 */}
+                              {item.slot.isMakeupSlot ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenEditMakeup(item.slot)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200 transition"
+                                >
+                                  ✏️ 보강 수정/취소
+                                </button>
+                              ) : linkedMakeup ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenEditMakeup(linkedMakeup)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-extrabold bg-blue-100 text-blue-800 border border-blue-300 hover:bg-blue-200 transition"
+                                >
+                                  🔗 보강 일정 관리
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onOpenCreateMakeup(
+                                      selectedStudent,
+                                      item.slot,
+                                      selectedDayCell.dateKey
+                                    )
+                                  }
+                                  className="px-3 py-1.5 rounded-lg text-xs font-extrabold bg-slate-800 text-white hover:bg-slate-700 transition"
+                                >
+                                  + 보강 일정 잡기
+                                </button>
+                              )}
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-1.5">
-                            {(["출석", "결석", "보강"] as AttendanceStatus[]).map((st) => {
-                              const active = item.status === st;
-                              return (
-                                <button
-                                  key={st}
-                                  type="button"
-                                  onClick={() => onSetAttendance(item.recordKey, st)}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold border transition ${
-                                    active
-                                      ? st === "출석"
-                                        ? "bg-emerald-600 text-white border-emerald-600"
-                                        : st === "결석"
-                                        ? "bg-rose-600 text-white border-rose-600"
-                                        : "bg-amber-600 text-white border-amber-600"
-                                      : "bg-white text-slate-600 border-slate-300 hover:bg-slate-100"
-                                  }`}
-                                >
-                                  {st}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
