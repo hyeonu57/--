@@ -916,6 +916,8 @@ export default function Home() {
     onSetAttendance={(recordKey, status) =>
       setAttendanceRecords((prev) => ({ ...prev, [recordKey]: status }))
     }
+    onOpenCreateMakeup={openCreateMakeupPopup}
+    onOpenEditMakeup={openEditMakeupPopup}
   />
 )}
 
