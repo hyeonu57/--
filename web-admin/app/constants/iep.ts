@@ -12,18 +12,19 @@ export const DAYS: DayOfWeek[] = ["월", "화", "수", "목", "금", "토"];
 export const PERIODS = [1, 2, 3, 4, 5, 6, 7];
 
 export const STORAGE_KEYS = {
-  USERS: "iep_portal_users_v2",
-  STUDENTS: "iep_portal_students_v2",
-  CATEGORIES: "iep_portal_categories_v2",
-  TIMETABLE: "iep_portal_timetable_v2",
-  IEP_RECORDS: "iep_portal_iep_records_v2",
-  ATTENDANCE: "iep_portal_attendance_v2",
-  WEEKLY_TASKS: "iep_portal_weekly_tasks_v2",
-  MAKEUP_NOTIFICATIONS: "iep_portal_makeup_notifications_v2",
-  MIDDLE_TEMPLATES: "iep_portal_middle_templates_v2",
-  SESSION_USER: "iep_portal_session_user_v2",
-  SESSION_PAGE: "iep_portal_session_page_v2",
-};
+  USERS: "iep_v22_users",
+  STUDENTS: "iep_v22_students",
+  CATEGORIES: "iep_v22_categories",
+  TIMETABLE: "iep_v22_timetable",
+  IEP_RECORDS: "iep_v22_iep_records",
+  ATTENDANCE: "iep_v22_attendance",
+  WEEKLY_TASKS: "iep_v22_weekly_tasks",
+  MAKEUP_NOTIFICATIONS: "iep_v22_makeup_notifications",
+  MIDDLE_TEMPLATES: "iep_v22_middle_templates",
+  MANUAL_MAKEUP_ITEMS: "iep_v22_manual_makeup_items",
+  SESSION_USER: "iep_v22_session_user",
+  SESSION_PAGE: "iep_v22_session_page",
+} as const;
 
 export const BASIC_ROUTINE_TOP =
   "관절 가동성 및 가벼운 스트레칭(5분) 진행, 오늘 활동 순서 안내 및 동기유발";

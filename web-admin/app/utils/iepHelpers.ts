@@ -167,7 +167,8 @@ export function isSlotActiveInWeek(slot: TimetableSlot, targetWeekKey: string): 
 export function computeStudentAttendanceStats(
   studentId: string,
   attendanceRecords: Record<string, AttendanceStatus>,
-  timetable: TimetableSlot[]
+  timetable: TimetableSlot[],
+  manualMakeupItems: ManualMakeupItem[] = []
 ) {
   let present = 0;
   let absent = 0;
@@ -175,19 +176,31 @@ export function computeStudentAttendanceStats(
 
   Object.entries(attendanceRecords).forEach(([key, status]) => {
     if (!key.endsWith(`_${studentId}`)) return;
-    const [, slotId] = key.split("_");
-    const slot = timetable.find((s) => s.id === slotId);
-
-    if (slot?.isMakeupSlot) {
-      if (status === "출석" || status === "보강") {
-        makeup++;
-      }
-    } else {
-      if (status === "출석") present++;
-      else if (status === "결석") absent++;
-      else if (status === "보강") absent++;
-    }
+    if (status === "출석") present++;
+    else if (status === "결석") absent++;
+    else if (status === "보강") makeup++;
   });
+
+  const activeMakeupSlotsForStudent = timetable.filter(
+    (s) => s.isMakeupSlot && s.studentIds.includes(studentId)
+  ).length;
+
+  const makeupCount = Math.max(makeup, activeMakeupSlotsForStudent);
+  const absentPending = Math.max(0, absent - makeupCount);
+
+  // 아직 시간표 보강 슬롯으로 배정되지 않은 수동 미보강 건수
+  const unscheduledManualCount = manualMakeupItems.filter(
+    (item) => item.studentId === studentId && !item.scheduledSlotId
+  ).length;
+
+  return {
+    present,
+    absent,
+    makeup: makeupCount,
+    pendingMakeup: absentPending + unscheduledManualCount,
+    unscheduledManualCount,
+  };
+}
 
   const pendingMakeup = Math.max(0, absent - makeup);
   return { present, absent, makeup, pendingMakeup, total: present + absent + makeup };

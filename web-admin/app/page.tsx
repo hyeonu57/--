@@ -78,6 +78,7 @@ export default function Home() {
     DEFAULT_MIDDLE_TEMPLATES
   );
 
+  const [manualMakeupItems, setManualMakeupItems] = useState<ManualMakeupItem[]>([]);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [loginIdInput, setLoginIdInput] = useState<string>("");
   const [loginPwInput, setLoginPwInput] = useState<string>("");
@@ -264,6 +265,42 @@ export default function Home() {
   const showToast = (msg: string, duration = 3500) => {
     setSaveMessage(msg);
     setTimeout(() => setSaveMessage(""), duration);
+  };
+
+  const handleAddManualMakeup = (item: Omit<ManualMakeupItem, "id" | "createdAt">) => {
+    const created: ManualMakeupItem = {
+      ...item,
+      id: `mup-${Date.now()}`,
+      createdAt: formatDateKey(new Date()),
+    };
+    setManualMakeupItems((prev) => [created, ...prev]);
+    showToast("✅ 잔여 미보강이 추가되었습니다.");
+  };
+
+  const handleDeleteManualMakeup = (id: string) => {
+    setConfirmDialog({
+      title: "잔여 미보강 삭제",
+      message: "선택한 잔여 미보강 항목을 삭제하시겠습니까?",
+      confirmLabel: "삭제",
+      danger: true,
+      onConfirm: () => {
+        setManualMakeupItems((prev) => prev.filter((m) => m.id !== id));
+        showToast("🗑️ 잔여 미보강 항목이 삭제되었습니다.");
+      },
+    });
+  };
+
+  const handleDismissAbsentMakeup = (recordKey: string, studentName: string) => {
+    setConfirmDialog({
+      title: "결석 기반 미보강 삭제(면제)",
+      message: `${studentName} 학생의 해당 결석 건에 대한 잔여 미보강을 삭제 처리하시겠습니까?\n(출결 기록은 '출석'으로 면제 처리됩니다.)`,
+      confirmLabel: "미보강 삭제",
+      danger: true,
+      onConfirm: () => {
+        setAttendanceRecords((prev) => ({ ...prev, [recordKey]: "출석" }));
+        showToast(`🗑️ ${studentName} 학생의 잔여 미보강 건이 삭제 처리되었습니다.`);
+      },
+    });
   };
 
   const handleExportBackupJson = () => {
@@ -916,6 +953,9 @@ export default function Home() {
     onSetAttendance={(recordKey, status) =>
       setAttendanceRecords((prev) => ({ ...prev, [recordKey]: status }))
     }
+    onAddManualMakeup={handleAddManualMakeup}
+    onDeleteManualMakeup={handleDeleteManualMakeup}
+    onDismissAbsentMakeup={handleDismissAbsentMakeup}
     onOpenCreateMakeup={openCreateMakeupPopup}
     onOpenEditMakeup={openEditMakeupPopup}
   />

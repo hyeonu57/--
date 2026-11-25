@@ -6,6 +6,7 @@ import {
   AttendanceStatus,
   ClassCategory,
   DayOfWeek,
+  ManualMakeupItem,
   Student,
   TimetableSlot,
   UserAccount,
@@ -25,8 +26,17 @@ interface AttendanceBookViewProps {
   attendanceRecords: Record<string, AttendanceStatus>;
   categories: ClassCategory[];
   users: UserAccount[];
+  manualMakeupItems: ManualMakeupItem[];
   onSetAttendance: (recordKey: string, status: AttendanceStatus) => void;
-  onOpenCreateMakeup: (student: Student, slot: TimetableSlot, originalDate: string) => void;
+  onAddManualMakeup: (item: Omit<ManualMakeupItem, "id" | "createdAt">) => void;
+  onDeleteManualMakeup: (id: string) => void;
+  onDismissAbsentMakeup: (recordKey: string, studentName: string) => void;
+  onOpenCreateMakeup: (
+    student: Student,
+    slot: TimetableSlot,
+    originalDate: string,
+    manualMakeupId?: string
+  ) => void;
   onOpenEditMakeup: (makeupSlot: TimetableSlot) => void;
 }
 
@@ -55,10 +65,16 @@ export default function AttendanceBookView({
   attendanceRecords,
   categories,
   users,
+  manualMakeupItems,
   onSetAttendance,
+  onAddManualMakeup,
+  onDeleteManualMakeup,
+  onDismissAbsentMakeup,
   onOpenCreateMakeup,
   onOpenEditMakeup,
 }: AttendanceBookViewProps) {
+  const teachersOnly = useMemo(() => users.filter((u) => u.role === "teacher"), [users]);
+
   const accessibleStudents = useMemo(() => {
     if (currentUser.role === "admin") return students;
     const assignedIds = new Set<string>();
@@ -75,10 +91,18 @@ export default function AttendanceBookView({
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [showAllStudentsSummary, setShowAllStudentsSummary] = useState<boolean>(false);
 
+  // 잔여 미보강 수동 추가 폼 상태
+  const [showAddMakeupForm, setShowAddMakeupForm] = useState<boolean>(false);
+  const [newMakeupTeacherId, setNewMakeupTeacherId] = useState<string>("");
+  const [newMakeupCategoryId, setNewMakeupCategoryId] = useState<string>("");
+  const [newMakeupDate, setNewMakeupDate] = useState<string>("2026-11-25");
+  const [newMakeupMemo, setNewMakeupMemo] = useState<string>("");
+
   useEffect(() => {
     const now = new Date();
     setViewYear(now.getFullYear());
     setViewMonth(now.getMonth() + 1);
+    setNewMakeupDate(formatDateKey(now));
   }, []);
 
   useEffect(() => {
@@ -89,6 +113,17 @@ export default function AttendanceBookView({
       setSelectedStudentId(accessibleStudents[0].id);
     }
   }, [accessibleStudents, selectedStudentId]);
+
+  useEffect(() => {
+    if (currentUser.role === "teacher") {
+      setNewMakeupTeacherId(currentUser.id);
+    } else if (!newMakeupTeacherId && teachersOnly[0]) {
+      setNewMakeupTeacherId(teachersOnly[0].id);
+    }
+    if (!newMakeupCategoryId && categories[0]) {
+      setNewMakeupCategoryId(categories[0].id);
+    }
+  }, [currentUser, teachersOnly, categories, newMakeupTeacherId, newMakeupCategoryId]);
 
   const filteredStudents = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -109,7 +144,6 @@ export default function AttendanceBookView({
   const getTeacherName = (teacherId: string) =>
     users.find((u) => u.id === teacherId)?.name || "담당 교사";
 
-  // 특정 학생·특정 연월의 출결 집계 헬퍼
   const calcStudentMonthStats = (studentId: string, year: number, month: number) => {
     const lastDay = new Date(year, month, 0).getDate();
     let totalSessions = 0;
@@ -157,20 +191,23 @@ export default function AttendanceBookView({
     };
   };
 
-  // 전체 학생 월간 요약표 데이터
   const allStudentsMonthRows = useMemo(() => {
     return accessibleStudents.map((st) => {
       const mStats = calcStudentMonthStats(st.id, viewYear, viewMonth);
-      const totalStats = computeStudentAttendanceStats(st.id, attendanceRecords, timetable);
+      const totalStats = computeStudentAttendanceStats(
+        st.id,
+        attendanceRecords,
+        timetable,
+        manualMakeupItems
+      );
       return {
         student: st,
         ...mStats,
         pendingMakeup: totalStats.pendingMakeup,
       };
     });
-  }, [accessibleStudents, viewYear, viewMonth, timetable, attendanceRecords]);
+  }, [accessibleStudents, viewYear, viewMonth, timetable, attendanceRecords, manualMakeupItems]);
 
-  // 선택 학생의 월간 달력 셀과 요약
   const { calendarCells, monthSummary } = useMemo(() => {
     const firstDayOfMonth = new Date(viewYear, viewMonth - 1, 1);
     const lastDayOfMonth = new Date(viewYear, viewMonth, 0);
@@ -248,6 +285,102 @@ export default function AttendanceBookView({
     return { calendarCells: cells, monthSummary: summary };
   }, [viewYear, viewMonth, selectedStudent, timetable, attendanceRecords, categories, users]);
 
+  // 선택 학생의 미배정 잔여 미보강 목록(수동 추가 + 결석 기록)
+  const pendingMakeupEntries = useMemo(() => {
+    if (!selectedStudent) return [];
+    const list: Array<{
+      id: string;
+      source: "manual" | "absent";
+      baseDate: string;
+      teacherId: string;
+      categoryId: string;
+      detailTitle: string;
+      recordKey?: string;
+      manualItem?: ManualMakeupItem;
+      slotForModal: TimetableSlot;
+    }> = [];
+
+    // 1) 수동 추가된 미배정 잔여 미보강
+    manualMakeupItems
+      .filter((m) => m.studentId === selectedStudent.id && !m.scheduledSlotId)
+      .forEach((m) => {
+        const baseSlot =
+          timetable.find(
+            (s) => s.teacherId === m.teacherId && s.studentIds.includes(selectedStudent.id)
+          ) ||
+          ({
+            id: `manual-slot-${m.id}`,
+            teacherId: m.teacherId,
+            day: "월",
+            period: 1,
+            categoryId: m.categoryId,
+            detailTitle: m.memo || "잔여 보강 수업",
+            studentIds: [selectedStudent.id],
+          } as TimetableSlot);
+
+        list.push({
+          id: m.id,
+          source: "manual",
+          baseDate: m.baseDate,
+          teacherId: m.teacherId,
+          categoryId: m.categoryId,
+          detailTitle: m.memo || "수동 추가 잔여 보강",
+          manualItem: m,
+          slotForModal: {
+            ...baseSlot,
+            categoryId: m.categoryId || baseSlot.categoryId,
+            detailTitle: m.memo || baseSlot.detailTitle,
+          },
+        });
+      });
+
+    // 2) 결석 상태인데 아직 보강 슬롯이 연결되지 않은 기록
+    Object.entries(attendanceRecords).forEach(([key, status]) => {
+      if (status !== "결석" || !key.endsWith(`_${selectedStudent.id}`)) return;
+      const hasLinkedMakeup = timetable.some(
+        (s) => s.isMakeupSlot && s.makeupOriginRecordKey === key
+      );
+      if (hasLinkedMakeup) return;
+
+      const [weekKey, slotId] = key.split("_");
+      const slot = timetable.find((s) => s.id === slotId);
+      if (!slot) return;
+
+      list.push({
+        id: key,
+        source: "absent",
+        baseDate: weekKey,
+        teacherId: slot.teacherId,
+        categoryId: slot.categoryId,
+        detailTitle: slot.detailTitle || `${slot.day}요일 ${slot.period}교시 결석 보강`,
+        recordKey: key,
+        slotForModal: slot,
+      });
+    });
+
+    return list;
+  }, [selectedStudent, manualMakeupItems, attendanceRecords, timetable]);
+
+  const handleCreateManualMakeupSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStudent) return;
+    const teacherId =
+      currentUser.role === "teacher"
+        ? currentUser.id
+        : newMakeupTeacherId || teachersOnly[0]?.id || "t-1";
+    const categoryId = newMakeupCategoryId || categories[0]?.id || "cat-1";
+
+    onAddManualMakeup({
+      studentId: selectedStudent.id,
+      teacherId,
+      categoryId,
+      baseDate: newMakeupDate || formatDateKey(new Date()),
+      memo: newMakeupMemo.trim() || undefined,
+    });
+    setNewMakeupMemo("");
+    setShowAddMakeupForm(false);
+  };
+
   const handlePrevMonth = () => {
     setSelectedDateKey(null);
     if (viewMonth === 1) {
@@ -280,14 +413,17 @@ export default function AttendanceBookView({
     : null;
 
   const overallStats = selectedStudent
-    ? computeStudentAttendanceStats(selectedStudent.id, attendanceRecords, timetable)
+    ? computeStudentAttendanceStats(
+        selectedStudent.id,
+        attendanceRecords,
+        timetable,
+        manualMakeupItems
+      )
     : null;
 
-  // 원래 수업과 연결된 보강 슬롯 찾기
   const findLinkedMakeupSlot = (recordKey: string) =>
     timetable.find((s) => s.isMakeupSlot && s.makeupOriginRecordKey === recordKey);
 
-  // 보강 수업과 연결된 원래 수업 날짜 찾기
   const getOriginDateLabel = (slot: TimetableSlot) => {
     if (!slot.isMakeupSlot || !slot.makeupOriginRecordKey) return null;
     const weekPart = slot.makeupOriginRecordKey.split("_")[0];
@@ -310,9 +446,7 @@ export default function AttendanceBookView({
             📅 학생별 월간 출석부
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            {currentUser.role === "admin"
-              ? "전체 학생 월간 출결 달력 · 전체 요약 비교 · 보강 일정 연동"
-              : "담당 학생 월간 출결 달력 · 요약 비교 · 보강 일정 연동"}
+            월간 출결 달력 · 전체 요약 비교 · 잔여 미보강 추가/배치/삭제
           </p>
         </div>
 
@@ -360,7 +494,7 @@ export default function AttendanceBookView({
         </div>
       </div>
 
-      {/* 2번 기능: 전체 학생 월간 출결 요약표 */}
+      {/* 전체 학생 월간 출결 요약표 */}
       {showAllStudentsSummary && (
         <section className="bg-white rounded-2xl border border-indigo-200 p-5 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
@@ -468,7 +602,6 @@ export default function AttendanceBookView({
         </section>
       )}
 
-      {/* 메인: 좌측 학생 선택 + 우측 월간 달력 & 보강 연동 패널 */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         <aside className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col gap-3 h-fit">
           <input
@@ -490,7 +623,8 @@ export default function AttendanceBookView({
                 const stats = computeStudentAttendanceStats(
                   st.id,
                   attendanceRecords,
-                  timetable
+                  timetable,
+                  manualMakeupItems
                 );
                 return (
                   <button
@@ -541,25 +675,180 @@ export default function AttendanceBookView({
             </div>
           ) : (
             <>
-              {/* 선택 학생 정보 & 누적 현황 */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-extrabold text-slate-800">
-                      {selectedStudent.name}
-                    </h3>
-                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                      {selectedStudent.schoolGradeClass ||
-                        `만 ${calculateAge(selectedStudent.birthDate)}세`}
-                    </span>
+              {/* 선택 학생 정보 + 잔여 미보강 추가 버튼 */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-extrabold text-slate-800">
+                        {selectedStudent.name}
+                      </h3>
+                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                        {selectedStudent.schoolGradeClass ||
+                          `만 ${calculateAge(selectedStudent.birthDate)}세`}
+                      </span>
+                    </div>
+                    {overallStats && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        누적 전체: 출석 {overallStats.present}회 · 결석 {overallStats.absent}회 ·
+                        보강 {overallStats.makeup}회 ·{" "}
+                        <span className="font-extrabold text-rose-600">
+                          미보강 잔여 {overallStats.pendingMakeup}회
+                        </span>
+                      </p>
+                    )}
                   </div>
-                  {overallStats && (
-                    <p className="text-xs text-slate-500 mt-1">
-                      누적 전체: 출석 {overallStats.present}회 · 결석 {overallStats.absent}회 ·
-                      보강 {overallStats.makeup}회 (미보강 잔여 {overallStats.pendingMakeup}회)
-                    </p>
-                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowAddMakeupForm((prev) => !prev)}
+                    className="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-amber-600 hover:bg-amber-700 text-white transition"
+                  >
+                    {showAddMakeupForm ? "닫기 ✕" : "+ 잔여 미보강 추가"}
+                  </button>
                 </div>
+
+                {/* 잔여 미보강 수동 추가 폼 */}
+                {showAddMakeupForm && (
+                  <form
+                    onSubmit={handleCreateManualMakeupSubmit}
+                    className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-end"
+                  >
+                    {currentUser.role === "admin" && (
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          담당 교사
+                        </label>
+                        <select
+                          value={newMakeupTeacherId}
+                          onChange={(e) => setNewMakeupTeacherId(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                        >
+                          {teachersOnly.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        수업 종류
+                      </label>
+                      <select
+                        value={newMakeupCategoryId}
+                        onChange={(e) => setNewMakeupCategoryId(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                      >
+                        {categories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        기준 날짜
+                      </label>
+                      <input
+                        type="date"
+                        value={newMakeupDate}
+                        onChange={(e) => setNewMakeupDate(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                        required
+                      />
+                    </div>
+
+                    <div className={currentUser.role === "admin" ? "" : "lg:col-span-2"}>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        메모 (선택)
+                      </label>
+                      <input
+                        type="text"
+                        value={newMakeupMemo}
+                        onChange={(e) => setNewMakeupMemo(e.target.value)}
+                        placeholder="예: 이월 보강 1회"
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-2 px-3 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-extrabold transition"
+                    >
+                      추가 등록
+                    </button>
+                  </form>
+                )}
+
+                {/* 잔여 미보강 목록: 주간 시간표에 바로 추가 & 관리자 삭제 */}
+                {pendingMakeupEntries.length > 0 && (
+                  <div className="pt-2 border-t border-slate-100 space-y-2">
+                    <div className="text-xs font-extrabold text-rose-700">
+                      ⚠️ 잔여 미보강 목록 ({pendingMakeupEntries.length}건) — 주간 시간표에
+                      배치하거나 관리할 수 있습니다.
+                    </div>
+                    <div className="space-y-1.5">
+                      {pendingMakeupEntries.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-rose-50/50 border border-rose-200 text-xs"
+                        >
+                          <div>
+                            <span className="font-extrabold text-slate-800">
+                              [{item.source === "manual" ? "직접추가" : "결석연계"}]{" "}
+                              {getCategoryName(item.categoryId)}
+                            </span>
+                            <span className="text-slate-600 ml-1.5">
+                              · 기준: {item.baseDate} · 담당: {getTeacherName(item.teacherId)}
+                              {item.detailTitle ? ` · ${item.detailTitle}` : ""}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onOpenCreateMakeup(
+                                  selectedStudent,
+                                  item.slotForModal,
+                                  item.baseDate,
+                                  item.source === "manual" ? item.id : undefined
+                                )
+                              }
+                              className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-extrabold transition"
+                            >
+                              + 주간 시간표에 추가
+                            </button>
+
+                            {currentUser.role === "admin" && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (item.source === "manual") {
+                                    onDeleteManualMakeup(item.id);
+                                  } else if (item.recordKey) {
+                                    onDismissAbsentMakeup(
+                                      item.recordKey,
+                                      selectedStudent.name
+                                    );
+                                  }
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-extrabold transition"
+                              >
+                                삭제
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 해당 월 요약 카드 5개 */}
@@ -598,26 +887,6 @@ export default function AttendanceBookView({
 
               {/* 월간 달력 */}
               <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <span className="text-xs font-bold text-slate-600">
-                    날짜 칸을 클릭하면 출결 변경과 보강 일정 배정/수정을 바로 할 수 있습니다.
-                  </span>
-                  <div className="flex items-center gap-2 text-[11px] font-bold">
-                    <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                      ● 출석
-                    </span>
-                    <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800">
-                      ● 결석
-                    </span>
-                    <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800">
-                      ● 보강
-                    </span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-500">
-                      ● 미체크
-                    </span>
-                  </div>
-                </div>
-
                 <div className="grid grid-cols-7 border-t border-l border-slate-200 rounded-xl overflow-hidden">
                   {WEEKDAY_HEADERS.map((w, idx) => (
                     <div
@@ -699,7 +968,7 @@ export default function AttendanceBookView({
                 </div>
               </div>
 
-              {/* 1번 기능: 선택 날짜 출결 변경 + 보강 일정 배정/수정/연결 표시 */}
+              {/* 선택 날짜 상세 패널 */}
               {selectedDayCell && (
                 <div className="bg-white rounded-2xl border border-blue-200 p-4 shadow-sm space-y-3">
                   <div className="flex items-center justify-between">
@@ -744,8 +1013,6 @@ export default function AttendanceBookView({
                                 담당: {item.teacherName}
                                 {item.slot.detailTitle ? ` · ${item.slot.detailTitle}` : ""}
                               </div>
-
-                              {/* 보강 연결 상태 안내 */}
                               {originLabel && (
                                 <div className="text-[11px] font-bold text-amber-700">
                                   🔗 연결 정보: {originLabel}
@@ -782,7 +1049,6 @@ export default function AttendanceBookView({
                                 );
                               })}
 
-                              {/* 보강 배정 / 수정 버튼 */}
                               {item.slot.isMakeupSlot ? (
                                 <button
                                   type="button"

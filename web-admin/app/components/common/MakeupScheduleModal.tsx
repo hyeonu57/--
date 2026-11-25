@@ -17,6 +17,18 @@ export interface MakeupModalPayload {
   slot: TimetableSlot;
   originalDate: string;
   editingMakeupSlot?: TimetableSlot;
+  manualMakeupId?: string;
+}
+
+export interface ManualMakeupItem {
+  id: string;
+  studentId: string;
+  teacherId: string;
+  categoryId: string;
+  baseDate: string; // YYYY-MM-DD
+  memo?: string;
+  createdAt: string;
+  scheduledSlotId?: string; // 주간 시간표에 보강 슬롯으로 배정된 경우 연결
 }
 
 interface MakeupScheduleModalProps {
