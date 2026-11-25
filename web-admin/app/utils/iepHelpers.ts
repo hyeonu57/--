@@ -188,6 +188,29 @@ export function computeStudentAttendanceStats(
   const makeupCount = Math.max(makeup, activeMakeupSlotsForStudent);
   const absentPending = Math.max(0, absent - makeupCount);
 
+  const unscheduledManualCount = manualMakeupItems.filter(
+    (item) => item.studentId === studentId && !item.scheduledSlotId
+  ).length;
+
+  const pendingMakeup = absentPending + unscheduledManualCount;
+
+  return {
+    present,
+    absent,
+    makeup: makeupCount,
+    pendingMakeup,
+    unscheduledManualCount,
+    total: present + absent + makeupCount,
+  };
+}
+
+  const activeMakeupSlotsForStudent = timetable.filter(
+    (s) => s.isMakeupSlot && s.studentIds.includes(studentId)
+  ).length;
+
+  const makeupCount = Math.max(makeup, activeMakeupSlotsForStudent);
+  const absentPending = Math.max(0, absent - makeupCount);
+
   // 아직 시간표 보강 슬롯으로 배정되지 않은 수동 미보강 건수
   const unscheduledManualCount = manualMakeupItems.filter(
     (item) => item.studentId === studentId && !item.scheduledSlotId
