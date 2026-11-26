@@ -134,3 +134,14 @@ export interface ConfirmDialogState {
   danger?: boolean;
   onConfirm: () => void;
 }
+
+export interface ManualMakeupItem {
+  id: string;
+  studentId: string;
+  teacherId: string;
+  categoryId: string;
+  baseDate: string;
+  memo?: string;
+  createdAt: string;
+  scheduledSlotId?: string;
+}

@@ -37,6 +37,7 @@ import {
   DayOfWeek,
   IEPRecord,
   MakeupNotification,
+  ManualMakeupItem,
   Student,
   TimetableSlot,
   UserAccount,
@@ -950,6 +951,7 @@ export default function Home() {
     attendanceRecords={attendanceRecords}
     categories={categories}
     users={users}
+    manualMakeupItems={manualMakeupItems}
     onSetAttendance={(recordKey, status) =>
       setAttendanceRecords((prev) => ({ ...prev, [recordKey]: status }))
     }
