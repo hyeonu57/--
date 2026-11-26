@@ -57,58 +57,31 @@ export default function Header({
         </span>
 
         <nav className="flex flex-wrap items-center gap-1 ml-1 bg-slate-100 p-1 rounded-xl">
-          <button
-            onClick={() => onNavigate("timetable")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-              activePage === "timetable" || activePage === "detail"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            🗓️ 주간 시간표
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onNavigate("attendanceBook")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-              activePage === "attendanceBook"
-                ? "bg-blue-600 text-white"
-                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-            }`}
-          >
-           📅 학생별 출석부
-          </button>
-
-          <button
-            onClick={() => onNavigate("weeklyTasks")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5 ${
-              activePage === "weeklyTasks"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <span>{currentUser.role === "admin" ? "📌 주간 업무 지시" : "📌 주간 업무"}</span>
-            {currentUser.role === "teacher" && uncheckedWeeklyTaskCount > 0 && (
-              <span className="px-1.5 py-0.2 bg-blue-600 text-white text-[10px] font-extrabold rounded-full">
-                {uncheckedWeeklyTaskCount}
-              </span>
-            )}
-          </button>
-
-          {currentUser.role === "teacher" ? (
-            <button
-              onClick={onOpenTeacherHistory}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                activePage === "teacherHistory"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              📚 담당 학생 누적 IEP & 출결
-            </button>
-          ) : (
+          
+          {currentUser.role === "admin" ? (
             <>
+              <button
+                onClick={() => onNavigate("weeklyTasks")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5 ${
+                  activePage === "weeklyTasks"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <span>📌 주간 업무 지시</span>
+              </button>
+
+              <button
+                onClick={() => onNavigate("timetable")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activePage === "timetable" || activePage === "detail"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                🗓️ 주간 시간표 관리
+              </button>
+
               <button
                 onClick={() => onNavigate("adminReview")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5 ${
@@ -117,13 +90,26 @@ export default function Header({
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                <span>🕵️ 선생님별 IEP 검토·피드백</span>
+                <span>🕵️ 선생님별 IEP 검토 피드백</span>
                 {totalUncheckedIepCount > 0 && (
                   <span className="px-1.5 py-0.2 bg-rose-600 text-white text-[10px] font-extrabold rounded-full">
                     {totalUncheckedIepCount}
                   </span>
                 )}
               </button>
+
+              <button
+                type="button"
+                onClick={() => onNavigate("attendanceBook")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activePage === "attendanceBook"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                📅 학생별 출석부
+              </button>
+
               <button
                 onClick={() => onNavigate("students")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
@@ -132,8 +118,9 @@ export default function Header({
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                🎓 학생 명단 ({studentCount})
+                🎓 학생 관리 ({studentCount})
               </button>
+
               <button
                 onClick={() => onNavigate("categories")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
@@ -142,8 +129,9 @@ export default function Header({
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                🏷️ 수업 종류·색상 ({categoryCount})
+                🏷️ 수업 관리 ({categoryCount})
               </button>
+
               <button
                 onClick={() => onNavigate("accounts")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
@@ -155,7 +143,60 @@ export default function Header({
                 👤 선생님 계정 ({teacherCount})
               </button>
             </>
+          ) : (
+            <>
+              <button
+                onClick={() => onNavigate("timetable")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activePage === "timetable" || activePage === "detail"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                🗓️ 주간 시간표
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onNavigate("attendanceBook")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activePage === "attendanceBook"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                📅 학생별 출석부
+              </button>
+
+              <button
+                onClick={() => onNavigate("weeklyTasks")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition inline-flex items-center gap-1.5 ${
+                  activePage === "weeklyTasks"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <span>📌 주간 업무</span>
+                {uncheckedWeeklyTaskCount > 0 && (
+                  <span className="px-1.5 py-0.2 bg-blue-600 text-white text-[10px] font-extrabold rounded-full">
+                    {uncheckedWeeklyTaskCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={onOpenTeacherHistory}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activePage === "teacherHistory"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                📚 담당 학생 누적 IEP & 출결
+              </button>
+            </>
           )}
+
         </nav>
       </div>
 
