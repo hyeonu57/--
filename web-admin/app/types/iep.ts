@@ -143,5 +143,6 @@ export interface ManualMakeupItem {
   baseDate: string;
   memo?: string;
   createdAt: string;
+  originRecordKey?: string;
   scheduledSlotId?: string;
 }

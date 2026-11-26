@@ -291,6 +291,34 @@ export default function Home() {
     });
   };
 
+  const handleDeferMakeupToLater = () => {
+    if (!makeupModalData) return;
+    const { student, slot, originalDate, originRecordKey } = makeupModalData;
+    const recordKeyToLink =
+      originRecordKey ||
+      `${formatDateKey(getMonday(parseDateStringToLocal(originalDate) || new Date()))}_${slot.id}_${student.id}`;
+
+    const alreadyDeferred = manualMakeupItems.some(
+      (m) => m.originRecordKey === recordKeyToLink && !m.scheduledSlotId
+    );
+    if (!alreadyDeferred) {
+      const created: ManualMakeupItem = {
+        id: `mup-${Date.now()}`,
+        studentId: student.id,
+        teacherId: slot.teacherId,
+        categoryId: slot.categoryId,
+        baseDate: originalDate,
+        memo: makeupDetailInput.trim() || `${slot.day}요일 ${slot.period}교시 보강 대기`,
+        createdAt: formatDateKey(new Date()),
+        originRecordKey: recordKeyToLink,
+      };
+      setManualMakeupItems((prev) => [created, ...prev]);
+    }
+
+    setMakeupModalData(null);
+    showToast("⏳ 잔여 미보강에 보관했습니다. 나중에 출석부에서 시간표에 추가할 수 있습니다.");
+  };
+
   const handleDismissAbsentMakeup = (recordKey: string, studentName: string) => {
     setConfirmDialog({
       title: "결석 기반 미보강 삭제(면제)",
@@ -1554,6 +1582,7 @@ export default function Home() {
         onChangePeriod={setMakeupPeriodInput}
         onChangeDetail={setMakeupDetailInput}
         onSubmit={handleConfirmMakeupSchedule}
+        onDeferToLater={handleDeferMakeupToLater}
         onCancelMakeup={handleCancelMakeupSchedule}
         onClose={() => setMakeupModalData(null)}
       />

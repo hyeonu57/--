@@ -173,36 +173,55 @@ export function computeStudentAttendanceStats(
 ) {
   let present = 0;
   let absent = 0;
-  let makeup = 0;
+  let makeupStatusRecords = 0;
+
+  // '보강'으로 체크된 원래 수업 키 목록
+  const makeupOriginKeys: string[] = [];
 
   Object.entries(attendanceRecords).forEach(([key, status]) => {
     if (!key.endsWith(`_${studentId}`)) return;
     if (status === "출석") present++;
     else if (status === "결석") absent++;
-    else if (status === "보강") makeup++;
+    else if (status === "보강") {
+      makeupStatusRecords++;
+      makeupOriginKeys.push(key);
+    }
   });
 
-  const activeMakeupSlotsForStudent = timetable.filter(
+  // 실제 시간표에 보강 수업으로 배정된 슬롯 수
+  const scheduledMakeupSlots = timetable.filter(
     (s) => s.isMakeupSlot && s.studentIds.includes(studentId)
-  ).length;
+  );
 
-  const makeupCount = Math.max(makeup, activeMakeupSlotsForStudent);
-  const absentPending = Math.max(0, absent - makeupCount);
+  // '보강'으로 체크되었지만 아직 시간표 보강 슬롯이 연결되지 않은 건수
+  const unscheduledMakeupFromAttendance = makeupOriginKeys.filter((originKey) => {
+    const hasLinkedSlot = scheduledMakeupSlots.some(
+      (s) => s.makeupOriginRecordKey === originKey
+    );
+    const hasManualDefer = manualMakeupItems.some(
+      (m) => m.originRecordKey === originKey
+    );
+    return !hasLinkedSlot && !hasManualDefer;
+  }).length;
 
-  // 아직 시간표 보강 슬롯으로 배정되지 않은 수동 미보강 건수
+  // 수동 추가 또는 '나중에 추가'로 보관 중인 미배정 잔여 미보강 건수
   const unscheduledManualCount = manualMakeupItems.filter(
     (item) => item.studentId === studentId && !item.scheduledSlotId
   ).length;
 
-  const pendingMakeup = absentPending + unscheduledManualCount;
+  const pendingMakeup = unscheduledMakeupFromAttendance + unscheduledManualCount;
+  const completedOrScheduledMakeup = Math.max(
+    scheduledMakeupSlots.length,
+    makeupStatusRecords - unscheduledMakeupFromAttendance
+  );
 
   return {
     present,
     absent,
-    makeup: makeupCount,
+    makeup: completedOrScheduledMakeup,
     pendingMakeup,
     unscheduledManualCount,
-    total: present + absent + makeupCount,
+    total: present + absent + completedOrScheduledMakeup,
   };
 }
 

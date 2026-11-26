@@ -16,19 +16,9 @@ export interface MakeupModalPayload {
   student: Student;
   slot: TimetableSlot;
   originalDate: string;
+  originRecordKey?: string;
   editingMakeupSlot?: TimetableSlot;
   manualMakeupId?: string;
-}
-
-export interface ManualMakeupItem {
-  id: string;
-  studentId: string;
-  teacherId: string;
-  categoryId: string;
-  baseDate: string; // YYYY-MM-DD
-  memo?: string;
-  createdAt: string;
-  scheduledSlotId?: string; // 주간 시간표에 보강 슬롯으로 배정된 경우 연결
 }
 
 interface MakeupScheduleModalProps {
@@ -44,6 +34,7 @@ interface MakeupScheduleModalProps {
   onChangePeriod: (val: number) => void;
   onChangeDetail: (val: string) => void;
   onSubmit: (e: React.FormEvent) => void;
+  onDeferToLater?: () => void;
   onCancelMakeup: () => void;
   onClose: () => void;
 }
@@ -61,12 +52,12 @@ export default function MakeupScheduleModal({
   onChangePeriod,
   onChangeDetail,
   onSubmit,
+  onDeferToLater,
   onCancelMakeup,
   onClose,
 }: MakeupScheduleModalProps) {
   const [showTimetablePicker, setShowTimetablePicker] = useState<boolean>(true);
 
-  // 현재 입력된 날짜(또는 원래 날짜)가 속한 주의 월요일 키 계산
   const referenceMonday = useMemo(() => {
     if (!data) return new Date(2026, 10, 23);
     const parsed =
@@ -78,7 +69,6 @@ export default function MakeupScheduleModal({
 
   const referenceWeekKey = formatDateKey(referenceMonday);
 
-  // 해당 선생님의 해당 주차 활성 슬롯 목록
   const teacherWeekSlots = useMemo(() => {
     if (!data) return [];
     const ignoreId = data.editingMakeupSlot?.id;
@@ -116,7 +106,6 @@ export default function MakeupScheduleModal({
     const base = parseDateStringToLocal(dateInput) || referenceMonday;
     const shifted = new Date(base);
     shifted.setDate(base.getDate() + deltaWeeks * 7);
-    // 요일을 유지한 채 주만 이동
     const targetDay: DayOfWeek = selectedDayKor || data.slot.day;
     const nextMonKey = formatDateKey(getMonday(shifted));
     onChangeDate(getExactDateFromMondayKey(nextMonKey, targetDay));
@@ -151,17 +140,17 @@ export default function MakeupScheduleModal({
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-1">
           <div>
-            • 기준 결석일: <span className="font-bold">{data.originalDate}</span> (
+            • 기준 수업일: <span className="font-bold">{data.originalDate}</span> (
             {data.slot.day}요일 {data.slot.period}교시)
           </div>
           <div>
-            • 안내: 아래 <span className="font-bold">주간 시간표에서 빈 칸을 클릭</span>하면
-            보강 날짜와 교시가 자동으로 선택됩니다.
+            • 아래 <span className="font-bold">주간 시간표 빈 칸을 클릭</span>해 바로 배정하거나,
+            당장 일정이 어렵다면 <span className="font-bold">「나중에 추가」</span>로 잔여
+            미보강에 보관할 수 있습니다.
           </div>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-4">
-          {/* 주간 시간표 빈 칸 선택 영역 */}
           <div className="border border-slate-200 rounded-2xl p-3.5 bg-slate-50/60 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -329,18 +318,28 @@ export default function MakeupScheduleModal({
             />
           </div>
 
-          <div className="pt-2 flex items-center justify-between gap-2">
-            {data.mode === "edit" ? (
-              <button
-                type="button"
-                onClick={onCancelMakeup}
-                className="px-3.5 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-bold rounded-xl"
-              >
-                보강 취소
-              </button>
-            ) : (
-              <div />
-            )}
+          <div className="pt-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {data.mode === "edit" && (
+                <button
+                  type="button"
+                  onClick={onCancelMakeup}
+                  className="px-3.5 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-bold rounded-xl"
+                >
+                  보강 취소
+                </button>
+              )}
+
+              {data.mode === "create" && !data.manualMakeupId && onDeferToLater && (
+                <button
+                  type="button"
+                  onClick={onDeferToLater}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-extrabold rounded-xl transition"
+                >
+                  ⏳ 나중에 추가 (잔여 미보강 보관)
+                </button>
+              )}
+            </div>
 
             <div className="flex gap-2">
               <button
